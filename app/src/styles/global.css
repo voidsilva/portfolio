@@ -1726,3 +1726,18 @@ button:focus-visible .roll::after {
 .stackx {
   grid-template-columns: 1fr;
 }
+
+/* menu só com os links, sem fundo */
+.pill {
+  background: none;
+  border: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  gap: 6px;
+}
+.pill__hl {
+  display: none;
+}
+.pill a {
+  text-shadow: 0 1px 12px rgba(6, 8, 14, 0.8);
+}
