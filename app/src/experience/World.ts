@@ -10,7 +10,7 @@ import { LOGO_DOT, logoShapes, sampleLogo, toWorld } from './logoShape';
 import { haloTexture, numberTexture } from './textures';
 
 /**
- * O mundo NeutronX: uma única cena contínua que a câmera atravessa.
+ * O mundo SilvaDev: uma única cena contínua que a câmera atravessa.
  *   z ≈ 0      O Monólito (a marca NX em escala arquitetônica)
  *   z -30…-165 O Corredor (colunas com pulsos de luz)
  *   z -200…-340 A Galeria (projetos como placas flutuantes)

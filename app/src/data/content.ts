@@ -3,7 +3,7 @@
 
 export const profile = {
   name: 'Paulo Silva',
-  brand: 'NeutronX',
+  brand: 'SilvaDev',
   handle: 'voidsilva',
   github: 'https://github.com/voidsilva',
   bio: 'Desenvolvedor Full Stack · TypeScript, JavaScript & Python · Construindo ERPs, APIs REST e automações',

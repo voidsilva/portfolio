@@ -3,12 +3,12 @@ import { profile, projects, archive, stack } from '../data/content';
 import { Arrow, GitHubIcon } from '../components/Logo';
 
 export const CHAPTERS = [
-  { id: 'hero', label: 'O Monólito' },
-  { id: 'manifesto', label: 'O Corredor' },
-  { id: 'projetos', label: 'A Galeria' },
-  { id: 'sobre', label: 'O Núcleo' },
-  { id: 'stack', label: 'As Órbitas' },
-  { id: 'contato', label: 'A Marca' },
+  { id: 'hero', label: 'Início' },
+  { id: 'manifesto', label: 'Abordagem' },
+  { id: 'projetos', label: 'Projetos' },
+  { id: 'sobre', label: 'Sobre' },
+  { id: 'stack', label: 'Ferramentas' },
+  { id: 'contato', label: 'Contato' },
 ];
 
 function Chars({ text }: { text: string }) {
@@ -33,11 +33,11 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
 
   return (
     <main className="track" id="conteudo">
-      {/* 01 — Monólito */}
+      {/* 01 · Monólito */}
       <section className="ch ch--hero" id="hero" aria-labelledby="hero-title">
         <div className="hero__top">
           <p className="hero__statement">
-            <span className="mask"><span>Desenvolvedor <b>full stack</b> —</span></span>
+            <span className="mask"><span>Desenvolvedor <b>full stack</b>.</span></span>
             <span className="mask"><span>ERPs, <b>APIs REST</b> e automações</span></span>
             <span className="mask"><span>com TypeScript, JavaScript & Python.</span></span>
           </p>
@@ -48,34 +48,34 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
             <span className="mask"><span className="thin">Silva</span></span>
           </h1>
           <a className="hero__scroll mono" href="#manifesto">
-            <i /> [ ROLE ] para entrar no núcleo
+            <i /> Role para explorar
           </a>
         </div>
       </section>
 
-      {/* 02 — Corredor */}
+      {/* 02 · Corredor */}
       <section className="ch ch--manifesto" id="manifesto" aria-label="Abordagem">
         <div className="sticky">
-          <p className="mono ch__label">[02] Abordagem</p>
+          <p className="mono ch__label">Abordagem</p>
           <p className="manifesto__line" data-line="0">Meus projetos vivem na parte que ninguém vê:</p>
           <p className="manifesto__line hl" data-line="1">autenticação, validação, papéis de acesso e regras de negócio.</p>
           <p className="manifesto__line" data-line="2">E em interfaces que deixam tudo isso simples para quem usa no dia a dia.</p>
         </div>
       </section>
 
-      {/* 03 — Galeria */}
+      {/* 03 · Galeria */}
       <section className="ch ch--gallery" id="projetos" aria-label="Projetos">
         {projects.map((p, i) => (
           <article className="proj" id={`p-${p.id}`} key={p.id} aria-labelledby={`t-${p.id}`}>
             <div className="sticky proj__stage">
               <p className="mono proj__kicker">
-                <b>[{p.index}]</b> {p.kicker}
+                <b>{p.index}</b> {p.kicker}
               </p>
               <h2 className="proj__name" id={`t-${p.id}`}>
                 <Chars text={p.name} />
               </h2>
-              <button className="proj__open mono" onClick={() => onOpen(i)} data-cursor>
-                [ abrir projeto ]
+              <button className="proj__open" onClick={() => onOpen(i)} data-cursor>
+                Abrir projeto
               </button>
               <div className="proj__meta mono">
                 <span>{p.stack.slice(0, 4).join(' · ')}</span>
@@ -98,7 +98,7 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
                 <a href={a.url} target="_blank" rel="noopener noreferrer" data-cursor>
                   <strong>{a.name}</strong>
                   <span>{a.note}</span>
-                  <em className="mono">{a.tags.join(' · ')} ↗</em>
+                  <em className="mono">{a.tags.join(' · ')}</em>
                 </a>
               </li>
             ))}
@@ -106,10 +106,10 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
         </div>
       </section>
 
-      {/* 04 — Núcleo */}
+      {/* 04 · Núcleo */}
       <section className="ch ch--about" id="sobre" aria-labelledby="sobre-title">
         <div className="sticky about">
-          <p className="mono ch__label" id="sobre-title">[04] Sobre</p>
+          <p className="mono ch__label" id="sobre-title">Sobre</p>
           <p className="about__quote">
             Sou Paulo, desenvolvedor full stack. Escrevo sistemas para <em>operações reais</em>: estoque, pedidos, financeiro,
             acesso de usuários.
@@ -132,10 +132,10 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
         </div>
       </section>
 
-      {/* 05 — Órbitas */}
+      {/* 05 · Órbitas */}
       <section className="ch ch--stack" id="stack" aria-labelledby="stack-title">
         <div className="sticky stackx">
-          <p className="mono ch__label" id="stack-title">[05] Ferramentas em uso · tiradas dos repositórios</p>
+          <p className="mono ch__label" id="stack-title">Ferramentas em uso, tiradas dos repositórios</p>
           <div className={`stackx__words${active ? ' has-active' : ''}`} onPointerLeave={() => setActive(null)}>
             {stack.map((s) => (
               <button
@@ -167,7 +167,7 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
         </div>
       </section>
 
-      {/* 06 — Marca */}
+      {/* 06 · Marca */}
       <section className="ch ch--outro" id="contato" aria-labelledby="contato-title">
         <div className="sticky outro">
           <h2 className="outro__title" id="contato-title">
@@ -180,7 +180,7 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
           </a>
           <footer className="foot mono">
             <span>© {new Date().getFullYear()} Paulo Silva · silvadev.xyz</span>
-            <span>Mundo 3D, código e design feitos do zero</span>
+            <span>Design e código por Paulo Silva</span>
           </footer>
         </div>
       </section>

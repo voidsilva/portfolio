@@ -4,7 +4,7 @@ import { Brand, Arrow, GitHubIcon } from '../components/Logo';
 import { profile, projects, type Project } from '../data/content';
 import { CHAPTERS } from './Chapters';
 
-export function Hud({ chapter, progress, fps, onNav }: { chapter: number; progress: number; fps: number | null; onNav: (id: string) => void }) {
+export function Hud({ chapter, progress, onNav }: { chapter: number; progress: number; onNav: (id: string) => void }) {
   const go = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
     onNav(id);
@@ -12,23 +12,22 @@ export function Hud({ chapter, progress, fps, onNav }: { chapter: number; progre
   return (
     <>
       <header className="hud hud--top">
-        <a href="#hero" className="brand" onClick={(e) => go(e, 'hero')} aria-label="NeutronX, voltar ao início" data-cursor>
+        <a href="#hero" className="brand" onClick={(e) => go(e, 'hero')} aria-label="SilvaDev, voltar ao início" data-cursor>
           <Brand />
         </a>
         <nav className="hud__nav mono" aria-label="Principal">
-          <a href="#projetos" onClick={(e) => go(e, 'projetos')} data-cursor>(Projetos)</a>
-          <a href="#sobre" onClick={(e) => go(e, 'sobre')} data-cursor>(Sobre)</a>
-          <a href="#contato" onClick={(e) => go(e, 'contato')} data-cursor>(Contato)</a>
-          <a href={profile.github} target="_blank" rel="noopener noreferrer" data-cursor>(GitHub ↗)</a>
+          <a href="#projetos" onClick={(e) => go(e, 'projetos')} data-cursor>Projetos</a>
+          <a href="#sobre" onClick={(e) => go(e, 'sobre')} data-cursor>Sobre</a>
+          <a href="#contato" onClick={(e) => go(e, 'contato')} data-cursor>Contato</a>
+          <a href={profile.github} target="_blank" rel="noopener noreferrer" data-cursor>GitHub</a>
         </nav>
       </header>
       <div className="hud hud--bottom mono" aria-hidden="true">
         <span className="hud__chapter">
-          <b>[{String(chapter + 1).padStart(2, '0')}]</b> <span key={chapter} className="hud__flip">{CHAPTERS[chapter].label}</span>
+          <b>{String(chapter + 1).padStart(2, '0')}</b> <span key={chapter} className="hud__flip">{CHAPTERS[chapter].label}</span>
         </span>
         <span className="hud__right">
-          {fps !== null && <span>[ {String(fps).padStart(3, '0')} FPS ]</span>}
-          <span>{String(Math.round(progress * 100)).padStart(3, '0')}%</span>
+                    <span>{Math.round(progress * 100)}%</span>
         </span>
       </div>
       <div className="hud__rail" aria-hidden="true">
@@ -121,10 +120,10 @@ export function ProjectPanel({ index, images, onClose }: { index: number | null;
           <>
             <div className="panel__head mono">
               <span>
-                <b>[{p.index}]</b> {p.kicker}
+                <b>{p.index}</b> {p.kicker}
               </span>
               <button className="panel__close" onClick={onClose} aria-label="Fechar detalhes" data-cursor>
-                fechar ✕
+                Fechar
               </button>
             </div>
             <h3 className="panel__title" id="panel-title">

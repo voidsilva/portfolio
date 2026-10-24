@@ -1,8 +1,8 @@
-# NeutronX · Portfólio de Paulo Silva
+# SilvaDev · Portfólio de Paulo Silva
 
 Portfólio publicado em **[silvadev.xyz](https://silvadev.xyz)**.
 
-Uma experiência com um núcleo 3D facetado (Three.js) que se abre e se recompõe ao longo do scroll (GSAP + ScrollTrigger), tipografia editorial e os projetos reais de [github.com/voidsilva](https://github.com/voidsilva).
+Um mundo 3D navegável pelo scroll (Three.js + GSAP + Lenis): o monólito SD, um corredor de luz, a galeria de projetos e um núcleo de partículas, com os projetos reais de [github.com/voidsilva](https://github.com/voidsilva).
 
 ## Stack
 
@@ -27,7 +27,7 @@ app/src/
 ├── three/CoreScene.ts   # núcleo 3D, partículas, luzes e câmera
 ├── components/          # Hero, Manifesto, Projects, About, Stack, Outro, Nav, Cursor
 ├── lib/motion.ts        # GSAP, magnetismo, tilt e preferência de movimento
-└── styles/global.css    # identidade visual NeutronX
+└── styles/global.css    # identidade visual SilvaDev
 ```
 
 ## Acessibilidade e desempenho

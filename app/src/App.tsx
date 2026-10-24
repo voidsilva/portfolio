@@ -37,7 +37,6 @@ export default function App() {
   const [images, setImages] = useState<string[]>(projects.map(() => ''));
   const [chapter, setChapter] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [fps, setFps] = useState<number | null>(null);
   const [panel, setPanel] = useState<number | null>(null);
   const [webgl] = useState(hasWebGL);
 
@@ -203,13 +202,11 @@ export default function App() {
       gsap.from('.outro > p, .outro > .btn, .foot', { autoAlpha: 0, y: 20, stagger: 0.08, scrollTrigger: { trigger: '#contato', start: 'top 10%' } });
     });
 
-    const fpsId = window.setInterval(() => w && setFps(w.fps), 500);
     return () => {
       ctx.revert();
       gsap.ticker.remove(tick);
       l.destroy();
       lenis.current = null;
-      clearInterval(fpsId);
     };
   }, [phase, mode]);
 
@@ -276,7 +273,7 @@ export default function App() {
       {phase !== 'in' && <Gate progress={load} ready={phase === 'gate'} suggestLite={systemReduced()} onEnter={enter} />}
       {phase === 'in' && (
         <>
-          <Hud chapter={chapter} progress={progress} fps={mode === 'full' ? fps : null} onNav={nav} />
+          <Hud chapter={chapter} progress={progress} onNav={nav} />
           <Cursor />
         </>
       )}

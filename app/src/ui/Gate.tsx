@@ -23,31 +23,31 @@ export function Gate({ progress, ready, suggestLite, onEnter }: { progress: numb
   };
 
   return (
-    <div className="gate" ref={root} role="dialog" aria-modal="true" aria-label="Entrada do portfólio NeutronX">
+    <div className="gate" ref={root} role="dialog" aria-modal="true" aria-label="Entrada do portfólio SilvaDev">
       <div className="gate__inner">
         <LogoMark className="gate__logo" />
-        <p className="gate__tag mono">[ NEUTRONX · PAULO SILVA ]</p>
+        <p className="gate__tag">SilvaDev · Paulo Silva</p>
         {!ready ? (
           <div className="gate__load" aria-live="polite">
-            <span className="mono">Inicializando núcleo</span>
+            <span>Carregando</span>
             <div className="gate__bar">
               <i style={{ transform: `scaleX(${progress})` }} />
             </div>
-            <span className="mono gate__pct">{String(pct).padStart(3, '0')}%</span>
+            <span className="gate__pct">{pct}%</span>
           </div>
         ) : (
           <div className="gate__actions">
             <button className="gate__enter" onClick={() => enter('full')} data-cursor>
-              Entrar na experiência
+              Entrar
             </button>
-            <button className="gate__lite mono" onClick={() => enter('lite')} data-cursor>
-              Versão leve, sem animações
+            <button className="gate__lite" onClick={() => enter('lite')} data-cursor>
+              ou ver a versão leve, sem animações
             </button>
-            {suggestLite && <p className="gate__hint mono">Seu sistema pede movimento reduzido. A escolha é sua.</p>}
+            {suggestLite && <p className="gate__hint">Seu sistema pede movimento reduzido. A escolha é sua.</p>}
           </div>
         )}
       </div>
-      <p className="gate__foot mono">Role para navegar · experiência 3D em tempo real</p>
+      <p className="gate__foot">Use o scroll para navegar</p>
     </div>
   );
 }

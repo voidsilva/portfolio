@@ -1,19 +1,17 @@
+import { LOGO_DOT, LOGO_PATHS } from '../experience/logoShape';
+
 /**
- * Marca NeutronX: uma ligadura geométrica de N e X.
- * A haste e a diagonal formam o N; a diagonal compartilhada e o traço roxo
- * formam o X. O quadrado ciano é o "nêutron", o único ponto de cor fria.
+ * Marca SilvaDev: um S de blocos e um D chanfrado, desenhados na mesma grade.
+ * O quadrado ciano é o único ponto de cor fria.
  */
 export function LogoMark({ mono = false, className, title }: { mono?: boolean; className?: string; title?: string }) {
-  const main = mono ? 'currentColor' : '#F4F5FA';
-  const accent = mono ? 'currentColor' : '#8B5CF6';
-  const dot = mono ? 'currentColor' : '#55D6FF';
+  const [dx, dy, dw, dh] = LOGO_DOT;
   return (
     <svg viewBox="0 0 64 64" className={className} role={title ? 'img' : undefined} aria-hidden={title ? undefined : true}>
       {title && <title>{title}</title>}
-      <path className="nx-bar" fill={main} d="M8 10h8v44H8z" />
-      <path className="nx-diag" fill={main} d="M16 10h10l30 44H46z" />
-      <path className="nx-cross" fill={accent} d="M46 10h10L26 54H16z" opacity={mono ? 0.55 : 1} />
-      <path className="nx-dot" fill={dot} d="M50 1h6v6h-6z" />
+      <path fill={mono ? 'currentColor' : '#F4F5FA'} d={LOGO_PATHS[0]} />
+      <path fill={mono ? 'currentColor' : '#8B5CF6'} fillRule="evenodd" d={LOGO_PATHS[1]} />
+      <rect fill={mono ? 'currentColor' : '#55D6FF'} x={dx} y={dy} width={dw} height={dh} />
     </svg>
   );
 }
@@ -23,7 +21,7 @@ export function Brand({ mono = false }: { mono?: boolean }) {
     <>
       <LogoMark mono={mono} />
       <span>
-        Neutron<span style={{ color: mono ? 'inherit' : 'var(--purple)' }}>X</span>
+        Silva<span style={{ color: mono ? 'inherit' : 'var(--purple)' }}>Dev</span>
       </span>
     </>
   );
