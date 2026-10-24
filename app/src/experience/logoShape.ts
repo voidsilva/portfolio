@@ -35,7 +35,7 @@ export const LOGOS: Record<'monolinha' | 'monograma' | 'minusculas', LogoSpec> =
   },
 };
 
-export const LOGO = LOGOS.monograma;
+export const LOGO = LOGOS.monolinha;
 export const TONES: Record<Tone, string> = { white: '#F4F5FA', purple: '#8B5CF6', cyan: '#55D6FF' };
 
 /** Converte para coordenadas do mundo: centralizado em x, base (y=54) em 0. */
