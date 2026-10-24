@@ -294,6 +294,7 @@ export default function App() {
       if (!w || (e.target as HTMLElement).closest('a, button, .panel')) return;
       const idx = w.pick(e.clientX, e.clientY);
       if (idx >= 0) setPanel(idx);
+      else if (chapter <= 1 && w.releaseLantern(e.clientX, e.clientY)) ambient.current?.bell(79, 0.05);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('click', click);

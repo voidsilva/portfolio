@@ -99,6 +99,11 @@ export class World {
   private clock = new THREE.Clock();
   private pointer = new THREE.Vector2();
   private pointerCur = new THREE.Vector2();
+  private ripples?: THREE.Vector3[];
+  private pointerMoved = false;
+  private released: THREE.Object3D[] = [];
+  private waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private hitV = new THREE.Vector3();
   private raycaster = new THREE.Raycaster();
   private disposables: { dispose: () => void }[] = [];
   private updaters: ((t: number, dt: number) => void)[] = [];
@@ -116,6 +121,7 @@ export class World {
   private high: boolean;
   private look = new THREE.Vector3();
   private tmpV = new THREE.Vector3();
+  private lanternHalo = haloTexture();
   private fogBase = new THREE.Color();
   private corridor: THREE.Object3D[] = [];
   private reducedIntro = false;
@@ -229,6 +235,7 @@ export class World {
           uTime: { value: 0 },
           uFog: { value: new THREE.Color() },
           uDensity: { value: 0.026 },
+          uRip: { value: Array.from({ length: 10 }, () => new THREE.Vector3(0, 0, -99)) },
         },
         vertexShader: /* glsl */ `
           uniform mat4 textureMatrix; varying vec4 vUv; varying vec3 vW; varying float vD;
@@ -243,7 +250,7 @@ export class World {
             #include <logdepthbuf_vertex>
           }`,
         fragmentShader: /* glsl */ `
-          uniform vec3 color; uniform sampler2D tDiffuse; uniform float uTime; uniform vec3 uFog; uniform float uDensity; varying vec4 vUv; varying vec3 vW; varying float vD;
+          uniform vec3 color; uniform sampler2D tDiffuse; uniform float uTime; uniform vec3 uFog; uniform float uDensity; uniform vec3 uRip[10]; varying vec4 vUv; varying vec3 vW; varying float vD;
           #include <logdepthbuf_pars_fragment>
           void main(){
             #include <logdepthbuf_fragment>
@@ -251,11 +258,22 @@ export class World {
               sin(vW.x * 1.7 + uTime * 0.9) + sin(vW.z * 2.3 - uTime * 1.1) + sin((vW.x + vW.z) * 4.1 + uTime * 1.7) * 0.5,
               cos(vW.z * 1.9 + uTime * 0.8) + cos(vW.x * 2.7 - uTime * 1.3) + cos((vW.x - vW.z) * 3.7 + uTime * 1.5) * 0.5
             );
+            // anéis que se espalham a partir de onde o cursor passou
+            float ring = 0.0;
+            for (int i = 0; i < 10; i++) {
+              float age = uTime - uRip[i].z;
+              if (age < 0.0 || age > 3.5) continue;
+              float dd = distance(vW.xz, uRip[i].xy);
+              float front = age * 2.4;
+              ring += sin((dd - front) * 7.0) * exp(-abs(dd - front) * 2.2) * exp(-age * 1.1);
+            }
+            w += vec2(ring * 6.0);
             vec4 uv = vUv;
             uv.xy += w * 0.0016 * uv.w;
             vec4 base = texture2DProj(tDiffuse, uv);
             float f = 1.0 - exp(-uDensity * uDensity * vD * vD);
-            gl_FragColor = vec4(mix(base.rgb * color, uFog, f), 1.0);
+            vec3 wc = base.rgb * color + vec3(0.6, 0.55, 0.9) * max(ring, 0.0) * 0.05;
+            gl_FragColor = vec4(mix(wc, uFog, f), 1.0);
             #include <tonemapping_fragment>
             #include <colorspace_fragment>
           }`,
@@ -272,6 +290,7 @@ export class World {
       this.scene.add(r);
       this.reflector = r;
       const mat = r.material as THREE.ShaderMaterial;
+      this.ripples = mat.uniforms.uRip.value as THREE.Vector3[];
       this.updaters.push((t) => {
         mat.uniforms.uTime.value = t;
         mat.uniforms.uFog.value.copy(this.fog.color);
@@ -342,6 +361,22 @@ export class World {
           float star = step(0.9965, h) * smoothstep(0.5, 0.0, length(fract(sp) - 0.5));
           star *= 0.6 + 0.4 * sin(uTime * (1.0 + h * 3.0) + h * 40.0);
           col += vec3(0.85, 0.88, 1.0) * star * smoothstep(0.05, 0.35, y);
+          // estrela cadente: a cada 7s uma risca atravessa o céu
+          float cyc = floor(uTime / 7.0);
+          float ph = fract(uTime / 7.0) / 0.12;
+          if (ph < 1.0) {
+            vec2 sky = vec2(atan(d.z, d.x), asin(clamp(d.y, -1.0, 1.0)));
+            float r1 = fract(sin(cyc * 12.9898) * 43758.5453);
+            float r2 = fract(sin(cyc * 78.233) * 12345.678);
+            vec2 a0 = vec2(-2.4 + r1 * 1.6, 0.45 + r2 * 0.35);
+            vec2 a1 = a0 + vec2(0.55, -0.22);
+            vec2 head = mix(a0, a1, ph);
+            vec2 tail = mix(a0, a1, max(ph - 0.35, 0.0));
+            vec2 pa = sky - tail, ba = head - tail;
+            float hh = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-5), 0.0, 1.0);
+            float dist = length(pa - ba * hh);
+            col += vec3(0.95, 0.92, 1.0) * smoothstep(0.004, 0.0, dist) * hh * sin(ph * 3.14159) * 1.6;
+          }
           // lua
           float m = dot(d, uMoon);
           col += vec3(0.86, 0.88, 0.98) * smoothstep(0.9993, 0.9996, m);
@@ -394,16 +429,32 @@ export class World {
         depthWrite: false,
         transparent: true,
         fog: false,
-        uniforms: { tMap: { value: tex }, uTint: { value: new THREE.Color(0.085, 0.095, 0.18) }, uFog: { value: new THREE.Color() }, opacity: { value: 1 }, uRot: { value: 0 } },
+        uniforms: { uTime: { value: 0 }, tMap: { value: tex }, uTint: { value: new THREE.Color(0.085, 0.095, 0.18) }, uFog: { value: new THREE.Color() }, opacity: { value: 1 }, uRot: { value: 0 } },
         vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
         fragmentShader: /* glsl */ `
-          uniform sampler2D tMap; uniform vec3 uTint; uniform vec3 uFog; uniform float opacity; uniform float uRot; varying vec3 vDir;
+          uniform float uTime; uniform sampler2D tMap; uniform vec3 uTint; uniform vec3 uFog; uniform float opacity; uniform float uRot; varying vec3 vDir;
           void main(){
             vec3 d = normalize(vDir);
             float a = atan(d.z, d.x) + uRot;
             vec2 uv = vec2(fract(a / 6.28318 + 0.5), acos(clamp(d.y, -1.0, 1.0)) / 3.14159);
             vec3 col = texture2D(tMap, vec2(uv.x, 1.0 - uv.y)).rgb * uTint;
             col = mix(uFog, col, smoothstep(-0.01, 0.06, d.y));
+          // estrela cadente: a cada 7s uma risca atravessa o céu
+          float cyc = floor(uTime / 7.0);
+          float ph = fract(uTime / 7.0) / 0.12;
+          if (ph < 1.0) {
+            vec2 sky = vec2(atan(d.z, d.x), asin(clamp(d.y, -1.0, 1.0)));
+            float r1 = fract(sin(cyc * 12.9898) * 43758.5453);
+            float r2 = fract(sin(cyc * 78.233) * 12345.678);
+            vec2 a0 = vec2(-2.4 + r1 * 1.6, 0.45 + r2 * 0.35);
+            vec2 a1 = a0 + vec2(0.55, -0.22);
+            vec2 head = mix(a0, a1, ph);
+            vec2 tail = mix(a0, a1, max(ph - 0.35, 0.0));
+            vec2 pa = sky - tail, ba = head - tail;
+            float hh = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-5), 0.0, 1.0);
+            float dist = length(pa - ba * hh);
+            col += vec3(0.95, 0.92, 1.0) * smoothstep(0.004, 0.0, dist) * hh * sin(ph * 3.14159) * 1.6;
+          }
             gl_FragColor = vec4(col, opacity);
             #include <tonemapping_fragment>
             #include <colorspace_fragment>
@@ -584,6 +635,42 @@ export class World {
       word.visible = this.cur.pz > -20;
     });
 
+    // Luz que acompanha o cursor sobre a água.
+    const cursorLight = new THREE.PointLight('#d8ccff', 0, 7, 1.6);
+    this.scene.add(cursorLight);
+    let lastRip = 0;
+    let ripI = 0;
+    const lastPos = new THREE.Vector3(1e3, 0, 0);
+    this.updaters.push((t) => {
+      const hit = this.waterPoint(this.pointer);
+      const near = this.cur.pz > -40 && hit;
+      cursorLight.intensity += ((near ? 9 : 0) - cursorLight.intensity) * 0.08;
+      if (hit) {
+        cursorLight.position.set(hit.x, 0.9, hit.z);
+        // cria uma onda quando o cursor anda o bastante
+        if (this.ripples && t - lastRip > 0.12 && hit.distanceTo(lastPos) > 0.7 && this.pointerMoved) {
+          this.ripples[ripI % this.ripples.length].set(hit.x, hit.z, t);
+          ripI++;
+          lastRip = t;
+          lastPos.copy(hit);
+        }
+      }
+      this.pointerMoved = false;
+      // lanternas soltas pelo visitante
+      for (let i = this.released.length - 1; i >= 0; i--) {
+        const l = this.released[i];
+        const age = t - l.userData.t0;
+        if (l.userData.t0 < 0) l.userData.t0 = t;
+        l.position.y = l.userData.y0 + age * 0.7;
+        l.position.x += Math.sin(t * 0.6 + l.userData.s) * 0.004;
+        l.rotation.y = t * 0.3;
+        if (age > 22) {
+          this.scene.remove(l);
+          this.released.splice(i, 1);
+        }
+      }
+    });
+
     // luar suave vindo de trás, para recortar as silhuetas
     const moon = new THREE.DirectionalLight('#b8c4ff', 0.7);
     moon.position.set(-8, 10, -12);
@@ -674,6 +761,7 @@ export class World {
         const dm = dome.material as THREE.ShaderMaterial;
         dm.uniforms.opacity.value = 1 - THREE.MathUtils.smoothstep(this.cur.fog, 0.3, 0.95);
         dm.uniforms.uFog.value.copy(this.fog.color);
+        dm.uniforms.uTime.value = t;
         dome.visible = dm.uniforms.opacity.value > 0.001;
       }
     });
@@ -809,6 +897,10 @@ export class World {
       const baseY = slot.y;
       this.updaters.push((t) => {
         g.position.y = baseY + Math.sin(t * 0.8 + i) * 0.18;
+        const dz = this.camera.position.z - slot.z;
+        const flip = THREE.MathUtils.smoothstep(dz, 13, 34);
+        g.rotation.y = slot.rotY + flip * (slot.x < 0 ? 1.25 : -1.25);
+        g.scale.setScalar(1 - flip * 0.25);
         g.rotation.z = Math.sin(t * 0.5 + i * 2) * 0.012;
         const on = this.hovered === i;
         const mat = screen.material as THREE.MeshBasicMaterial;
@@ -957,7 +1049,44 @@ export class World {
     this.velocity = Math.max(this.velocity, Math.min(1, Math.abs(v) / 60));
   }
 
+  /** Ponto do lago sob o cursor (ou null). */
+  private waterPoint(ndc: THREE.Vector2) {
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.raycaster.ray.intersectPlane(this.waterPlane, this.hitV);
+    return hit && hit.distanceTo(this.camera.position) < 60 ? hit : null;
+  }
+
+  /** Solta uma lanterna no ponto do lago onde o visitante clicou. */
+  releaseLantern(clientX: number, clientY: number) {
+    const ndc = new THREE.Vector2((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1);
+    const hit = this.waterPoint(ndc);
+    if (!hit || this.released.length > 40) return false;
+    // nunca nasce colada na câmera: empurra para pelo menos 10 unidades adiante
+    const cam = this.camera.position;
+    const flat = new THREE.Vector3(hit.x - cam.x, 0, hit.z - cam.z);
+    if (flat.length() < 10) {
+      flat.setLength(10);
+      hit.set(cam.x + flat.x, 0, cam.z + flat.z);
+    }
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.26, 0.2, 0.55, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.2, 0.5), side: THREE.DoubleSide, toneMapped: false, transparent: true, opacity: 0.92 }),
+    );
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.lanternHalo, color: '#ffae5c', transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.scale.setScalar(2.4);
+    g.add(body, glow);
+    g.position.set(hit.x, 0.4, hit.z);
+    g.scale.setScalar(0.75);
+    g.userData = { t0: -1, y0: 0.4, s: Math.random() * 10 };
+    this.scene.add(g);
+    this.released.push(g);
+    if (this.ripples) this.ripples[Math.floor(Math.random() * 10)].set(hit.x, hit.z, this.clock.elapsedTime);
+    return true;
+  }
+
   setPointer(x: number, y: number) {
+    this.pointerMoved = true;
     this.pointer.set(x, y);
   }
 

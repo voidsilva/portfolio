@@ -55,6 +55,7 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
           <a className="hero__scroll mono" href="#manifesto">
             <i /> Role para explorar
           </a>
+          <p className="hero__hint">Passe o mouse no lago · clique para soltar uma lanterna</p>
         </div>
       </section>
 
