@@ -612,6 +612,11 @@ button {
   margin: 0 auto;
 }
 .archive ul {
+  background: rgba(10, 13, 20, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 16px;
+  padding: 0 24px;
   list-style: none;
   border-top: 1px solid var(--line);
 }

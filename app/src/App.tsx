@@ -3,7 +3,6 @@ import Lenis from 'lenis';
 import * as THREE from 'three';
 import { gsap, ScrollTrigger, systemReduced, isCoarse } from './lib/motion';
 import type { Rig, World as WorldT } from './experience/World';
-import { erpTexture, terminalTexture } from './experience/textures';
 import { Gate, type Mode } from './ui/Gate';
 import { Chapters, CHAPTERS } from './ui/Chapters';
 import { Cursor, Hud, ProjectPanel } from './ui/Hud';
@@ -69,7 +68,7 @@ export default function App() {
         })
       : Promise.resolve(null);
     const loader = new THREE.TextureLoader();
-    const files = ['/gastos.webp', '/studiaflow.webp', '/vidflow.webp'];
+    const files = projects.map((p) => (p.preview.kind === 'image' ? p.preview.src : ''));
     let done = 0;
     const texs = Promise.all(
       files.map(
@@ -93,10 +92,8 @@ export default function App() {
 
     Promise.all([fonts, mod, texs]).then(([, m, loaded]) => {
       if (!alive) return;
-      const erp = erpTexture();
-      const term = terminalTexture();
-      const all = [erp, term, ...loaded];
-      setImages([(erp.image as HTMLCanvasElement).toDataURL('image/webp', 0.85), (term.image as HTMLCanvasElement).toDataURL('image/webp', 0.85), ...files]);
+      const all = loaded;
+      setImages(files);
       if (m && canvas.current) {
         if (innerWidth < 820) Object.assign(m.KEYS.hero, { px: 0, lx: 0.2, ly: 1.2, pz: 12 });
         world.current = new m.World(canvas.current, quality(), all, assets);

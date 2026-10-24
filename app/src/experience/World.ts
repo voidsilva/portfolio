@@ -9,6 +9,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { LOGO, sampleLogo, toWorld } from './logoShape';
+import { projects } from '../data/content';
 import { haloTexture, numberTexture } from './textures';
 
 /**
@@ -62,7 +63,7 @@ const HORIZON_TINT = new THREE.Color(0.055, 0.046, 0.1);
 const FOGS = ['#0a0d14', '#0c1019', '#0b1318', '#13132a', '#0a0c12'].map((c) => new THREE.Color(c));
 
 export const CORE_Z = -400;
-export const SLOTS = Array.from({ length: 5 }, (_, i) => {
+export const SLOTS = Array.from({ length: projects.length }, (_, i) => {
   const x = i % 2 === 0 ? -3.6 : 3.6;
   return { x, y: 4.3, z: -205 - i * 34, rotY: x < 0 ? 0.32 : -0.32 };
 });
