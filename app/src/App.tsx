@@ -7,7 +7,6 @@ import { erpTexture, terminalTexture } from './experience/textures';
 import { Gate, type Mode } from './ui/Gate';
 import { Chapters, CHAPTERS } from './ui/Chapters';
 import { Cursor, Hud, ProjectPanel } from './ui/Hud';
-import { Terminal } from './ui/Terminal';
 import { Ambient } from './experience/Ambient';
 import { projects } from './data/content';
 
@@ -96,6 +95,7 @@ export default function App() {
       if (m && canvas.current) {
         if (innerWidth < 820) Object.assign(m.KEYS.hero, { px: 0, lx: 0, ly: 3.2 });
         world.current = new m.World(canvas.current, quality(), all);
+        if (import.meta.env.DEV) Object.assign(window, { __world: world.current });
         keys.current = m.KEYS;
         world.current.rig.pz = 70;
         world.current.rig.py = 10;
@@ -306,7 +306,6 @@ export default function App() {
         <>
           <Hud chapter={chapter} progress={progress} onNav={nav} sound={sound} onSound={toggleSound} />
           <Cursor />
-          <Terminal onNav={nav} onOpen={setPanel} onSound={toggleSound} />
         </>
       )}
       <Chapters onOpen={setPanel} images={images} />

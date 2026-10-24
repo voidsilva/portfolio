@@ -6,7 +6,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { LOGO, pathPoints, sampleLogo, toWorld } from './logoShape';
+import { LOGO, sampleLogo, toWorld } from './logoShape';
 import { haloTexture, numberTexture } from './textures';
 
 /**
@@ -32,6 +32,7 @@ export type Quality = 'high' | 'low';
 const PURPLE = new THREE.Color('#9d8cf0');
 const CYAN = new THREE.Color('#8fd3df');
 // Paleta noturna e calma: azul-ardósia com toques de lavanda.
+const HORIZON_TINT = new THREE.Color(0.055, 0.046, 0.1);
 const FOGS = ['#0a0d14', '#0c1019', '#0b1318', '#13132a', '#0a0c12'].map((c) => new THREE.Color(c));
 
 export const CORE_Z = -400;
@@ -85,6 +86,8 @@ export class World {
   private high: boolean;
   private look = new THREE.Vector3();
   private tmpV = new THREE.Vector3();
+  private fogBase = new THREE.Color();
+  private corridor: THREE.Object3D[] = [];
   private reducedIntro = false;
   /** Reinicia o desenho da marca (chamado ao entrar na experiência). */
   introStart: () => void = () => {};
@@ -214,7 +217,7 @@ export class World {
               cos(vW.z * 1.9 + uTime * 0.8) + cos(vW.x * 2.7 - uTime * 1.3) + cos((vW.x - vW.z) * 3.7 + uTime * 1.5) * 0.5
             );
             vec4 uv = vUv;
-            uv.xy += w * 0.0045 * uv.w;
+            uv.xy += w * 0.0016 * uv.w;
             vec4 base = texture2DProj(tDiffuse, uv);
             float f = 1.0 - exp(-uDensity * uDensity * vD * vD);
             gl_FragColor = vec4(mix(base.rgb * color, uFog, f), 1.0);
@@ -247,7 +250,7 @@ export class World {
       new THREE.ShaderMaterial({
         transparent: true,
         depthWrite: false,
-        uniforms: { uColor: { value: PURPLE }, uBase: { value: new THREE.Color('#07080c') }, uSolid: { value: this.high ? 0.3 : 1 }, uFog: { value: new THREE.Color() }, uDensity: { value: 0.026 } },
+        uniforms: { uColor: { value: PURPLE }, uBase: { value: new THREE.Color('#07080c') }, uSolid: { value: this.high ? 0.22 : 1 }, uFog: { value: new THREE.Color() }, uDensity: { value: 0.026 } },
         vertexShader: /* glsl */ `varying vec3 vW; varying float vD; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; vec4 mv = viewMatrix * w; vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
         fragmentShader: /* glsl */ `
           uniform vec3 uColor; uniform vec3 uBase; uniform float uSolid; uniform vec3 uFog; uniform float uDensity; varying vec3 vW; varying float vD;
@@ -255,7 +258,7 @@ export class World {
           void main(){
             float g = max(line(vW.x / 4.0, 0.012), line(vW.z / 4.0, 0.012));
             float fade = exp(-vD * 0.035);
-            vec3 col = uBase + uColor * g * 0.2 * fade;
+            vec3 col = uBase + uColor * g * (uSolid < 0.9 ? 0.0 : 0.12) * fade;
             float f = 1.0 - exp(-uDensity * uDensity * vD * vD);
             gl_FragColor = vec4(mix(col, uFog, f), max(uSolid, g * 0.3 * fade));
           }
@@ -272,155 +275,166 @@ export class World {
     });
   }
 
+  /** Céu noturno: degradê, estrelas, lua e silhueta de montanhas, tudo num shader. */
+  private buildSky() {
+    const mat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+      uniforms: {
+        uFog: { value: new THREE.Color() },
+        uTime: { value: 0 },
+        uMoon: { value: new THREE.Vector3(-0.55, 0.32, -0.77).normalize() },
+      },
+      vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uFog; uniform float uTime; uniform vec3 uMoon; varying vec3 vDir;
+        float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float noise(float x){ float i = floor(x); float f = fract(x); return mix(hash(vec2(i, 0.0)), hash(vec2(i + 1.0, 0.0)), smoothstep(0.0, 1.0, f)); }
+        float ridge(float a, float s){ float h = 0.0; float amp = 0.5; for (int i = 0; i < 5; i++){ h += noise(a * s) * amp; s *= 2.1; amp *= 0.5; } return h; }
+        void main(){
+          vec3 d = normalize(vDir);
+          float y = d.y;
+          vec3 zenith = uFog * 0.35 + vec3(0.01, 0.012, 0.03);
+          vec3 horizon = uFog * 1.6 + vec3(0.06, 0.05, 0.11);
+          vec3 col = mix(horizon, zenith, smoothstep(-0.02, 0.55, y));
+          // brilho suave no horizonte
+          col += vec3(0.16, 0.12, 0.26) * exp(-abs(y) * 14.0) * 0.6;
+          // estrelas
+          vec2 sp = vec2(atan(d.z, d.x) * 140.0, asin(clamp(y, -1.0, 1.0)) * 140.0);
+          vec2 cell = floor(sp);
+          float h = hash(cell);
+          float star = step(0.9965, h) * smoothstep(0.5, 0.0, length(fract(sp) - 0.5));
+          star *= 0.6 + 0.4 * sin(uTime * (1.0 + h * 3.0) + h * 40.0);
+          col += vec3(0.85, 0.88, 1.0) * star * smoothstep(0.05, 0.35, y);
+          // lua
+          float m = dot(d, uMoon);
+          col += vec3(0.86, 0.88, 0.98) * smoothstep(0.9993, 0.9996, m);
+          col += vec3(0.5, 0.48, 0.75) * pow(max(m, 0.0), 400.0) * 0.6 + vec3(0.25, 0.22, 0.4) * pow(max(m, 0.0), 30.0) * 0.25;
+          // montanhas: duas camadas, a de trás mais clara (perspectiva atmosférica)
+          float az = atan(d.z, d.x) + 3.14159;
+          float far = 0.035 + ridge(az, 3.0) * 0.07;
+          float near = 0.01 + ridge(az + 11.0, 5.0) * 0.05;
+          col = mix(col, horizon * 0.62, step(y, far) * smoothstep(-0.05, 0.0, y));
+          col = mix(col, horizon * 0.38, step(y, near) * smoothstep(-0.05, 0.0, y));
+          gl_FragColor = vec4(col, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    });
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(200, 48, 24), mat);
+    sky.frustumCulled = false;
+    sky.renderOrder = -1;
+    this.scene.add(sky);
+    this.updaters.push((t) => {
+      sky.position.copy(this.camera.position);
+      mat.uniforms.uFog.value.copy(this.fogBase);
+      mat.uniforms.uTime.value = t;
+    });
+  }
+
+  /**
+   * A peça central: um astrolábio de metal polido. Quatro anéis com marcações
+   * gravadas giram em eixos diferentes ao redor de um núcleo de vidro aceso.
+   */
   private buildMonolith() {
+    this.buildSky();
     const group = new THREE.Group();
-    const scale = 0.19;
-    const tint = { white: new THREE.Color('#F4F5FA'), purple: PURPLE };
-    // Metal polido: prata no S, roxo anodizado no D.
-    const glass = (tone: 'white' | 'purple') =>
-      new THREE.MeshPhysicalMaterial({
-        color: tone === 'white' ? '#e6e9f2' : '#8f80e6',
-        metalness: 1,
-        roughness: tone === 'white' ? 0.16 : 0.22,
-        clearcoat: 1,
-        clearcoatRoughness: 0.08,
-        envMapIntensity: tone === 'white' ? 1.6 : 1.3,
-      });
+    group.position.set(0, 5.2, 0);
+    group.scale.setScalar(1.25);
 
-    // A marca: tubos de vidro com um filamento de neon dentro.
-    const drawn: { geo: THREE.BufferGeometry; total: number }[] = [];
-    const caps: THREE.Object3D[] = [];
-    let head: THREE.Vector3[] = [];
-    LOGO.strokes.forEach((st) => {
-      const { pts, closed } = pathPoints(st.d, 0.3);
-      const v = pts.map(([x, y]) => {
-        const w = toWorld(x, y, scale);
-        return new THREE.Vector3(w.x, w.y, 0);
-      });
-      if (v.length > head.length) head = v;
-      const curve = new PolyCurve(v);
-      const r = (st.w / 2) * scale;
-      const segs = v.length * 2;
-      const outer = new THREE.TubeGeometry(curve, segs, r, 28, closed);
-      const core = new THREE.TubeGeometry(curve, segs, r * 0.28, 10, closed);
-      const neon = new THREE.MeshBasicMaterial({ color: tint[st.tone].clone().multiplyScalar(st.tone === 'white' ? 1.15 : 2.4), toneMapped: false });
-      group.add(new THREE.Mesh(outer, glass(st.tone)));
-      void neon;
-      drawn.push({ geo: outer, total: outer.index!.count });
-      core.dispose();
-      if (!closed) {
-        [v[0], v[v.length - 1]].forEach((p) => {
-          const g = new THREE.Group();
-          g.position.copy(p);
-          g.add(new THREE.Mesh(new THREE.SphereGeometry(r, 28, 18), glass(st.tone)));
-          group.add(g);
-          caps.push(g);
-        });
-      }
-    });
+    const metal = (color: string, rough: number) =>
+      new THREE.MeshPhysicalMaterial({ color, metalness: 1, roughness: rough, clearcoat: 0.6, clearcoatRoughness: 0.15, envMapIntensity: 1.5 });
+    const silver = metal('#d9dce6', 0.18);
+    const champagne = metal('#d8c7a6', 0.24);
+    const lavender = metal('#a99be8', 0.26);
+    const graphite = metal('#3a3e4c', 0.35);
 
-    // Ponto ciano: uma pequena estrela.
-    const dots = LOGO.dots.map((d) => {
-      const w = toWorld(d.cx, d.cy, scale);
-      const m = new THREE.Mesh(new THREE.SphereGeometry(d.r * scale, 32, 20), new THREE.MeshBasicMaterial({ color: CYAN.clone().multiplyScalar(2.5), toneMapped: false }));
-      m.position.set(w.x, w.y + 0.4, 0);
-      const light = new THREE.PointLight(CYAN, 22, 16, 1.8);
-      light.position.copy(m.position);
-      group.add(m, light);
-      return { m, light, y: m.position.y };
-    });
-
-    // Portal: um anel de luz gigante atrás da marca, como um eclipse.
-    const portal = new THREE.Group();
-    portal.position.set(0, 4.6, -7);
-    const ringMat = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      uniforms: { uTime: { value: 0 }, uIntro: { value: 0 }, uPurple: { value: PURPLE }, uCyan: { value: CYAN } },
-      vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: /* glsl */ `
-        uniform float uTime; uniform float uIntro; uniform vec3 uPurple; uniform vec3 uCyan; varying vec2 vUv;
-        void main(){
-          float a = vUv.x;
-          float sweep = smoothstep(0.0, 0.02, uIntro - a);
-          float hl = pow(0.5 + 0.5 * sin((a - uTime * 0.05) * 6.2832), 6.0);
-          vec3 col = mix(uPurple, uCyan, hl) * (1.2 + hl * 3.0);
-          float edge = 1.0 - abs(vUv.y - 0.5) * 2.0;
-          gl_FragColor = vec4(col * edge, edge * sweep);
-        }`,
-    });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(9.5, 0.05, 12, 400), ringMat);
-    ring.rotation.z = Math.PI / 2;
-    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(10.4, 0.015, 8, 400), ringMat);
-    ring2.rotation.z = Math.PI / 2;
-    const halo = haloTexture();
-    this.disposables.push(halo);
-    const corona = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: PURPLE, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-    corona.scale.set(34, 34, 1);
-    portal.add(corona, ring, ring2);
-    group.add(portal);
-
-    // Feixes de luz volumétricos caindo do alto.
-    const beamMat = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-      uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color('#9d80ff') }, uI: { value: 0 } },
-      vertexShader: /* glsl */ `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vW = (modelMatrix * vec4(position,1.0)).xyz; gl_Position = projectionMatrix * viewMatrix * vec4(vW, 1.0); }`,
-      fragmentShader: /* glsl */ `
-        uniform float uTime; uniform vec3 uColor; uniform float uI; varying vec2 vUv; varying vec3 vW;
-        void main(){
-          float x = 1.0 - abs(vUv.x - 0.5) * 2.0;
-          float fall = smoothstep(0.0, 0.45, vUv.y) * smoothstep(1.0, 0.55, vUv.y);
-          float flicker = 0.75 + 0.25 * sin(uTime * 0.7 + vW.x * 2.0) * sin(uTime * 0.43 + vW.z);
-          float a = pow(x, 2.5) * fall * flicker * 0.09 * uI;
-          gl_FragColor = vec4(uColor, a);
-        }`,
-    });
-    const beams = new THREE.Group();
-    const beamDefs: [number, number, number, number][] = [
-      [-4.5, -2, 0.22, 3.2],
-      [-1.5, -3, 0.08, 2.4],
-      [2.2, -2.5, -0.12, 3.6],
-      [5, -1.5, -0.25, 2.6],
-      [0.4, -4.5, 0.02, 4.2],
+    const rings: { pivot: THREE.Group; axis: THREE.Vector3; speed: number; base: THREE.Euler }[] = [];
+    const defs: [number, number, THREE.Material, [number, number, number], number][] = [
+      [3.4, 0.11, silver, [0, 0, 0], 0.18],
+      [2.85, 0.09, champagne, [Math.PI / 2, 0, 0], -0.26],
+      [2.35, 0.085, lavender, [0, Math.PI / 2, 0.4], 0.34],
+      [1.85, 0.07, silver, [0.9, 0.3, 0], -0.45],
     ];
-    beamDefs.forEach(([x, z, rz, w]) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 26), beamMat);
-      m.position.set(x, 11, z);
-      m.rotation.set(0, 0, rz);
-      beams.add(m);
-      const m2 = m.clone();
-      m2.rotation.y = Math.PI / 2;
-      beams.add(m2);
+    defs.forEach(([R, tube, mat, rot, speed], i) => {
+      const pivot = new THREE.Group();
+      pivot.rotation.set(...rot);
+      // anel principal com seção chata (fita), mais elegante que um tubo redondo
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, R + tube, 0, Math.PI * 2, false);
+      const hole = new THREE.Path();
+      hole.absarc(0, 0, R - tube, 0, Math.PI * 2, true);
+      shape.holes.push(hole);
+      const band = new THREE.ExtrudeGeometry(shape, { depth: tube * 1.6, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 3, curveSegments: 160 });
+      band.translate(0, 0, -tube * 0.8);
+      pivot.add(new THREE.Mesh(band, mat));
+      // marcações gravadas na face
+      const ticks = i === 0 ? 120 : i === 1 ? 72 : 48;
+      const tick = new THREE.InstancedMesh(new THREE.BoxGeometry(0.012, tube * 0.9, 0.02), graphite, ticks);
+      const m4 = new THREE.Matrix4();
+      for (let k = 0; k < ticks; k++) {
+        const a = (k / ticks) * Math.PI * 2;
+        const long = k % (ticks / 12) === 0 ? 1.6 : 1;
+        m4.compose(
+          new THREE.Vector3(Math.cos(a) * R, Math.sin(a) * R, tube * 0.82 + 0.01),
+          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), a - Math.PI / 2),
+          new THREE.Vector3(1, long, 1),
+        );
+        tick.setMatrixAt(k, m4);
+      }
+      pivot.add(tick);
+      // pinos de articulação nos eixos
+      [-1, 1].forEach((s) => {
+        const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.36, 24), champagne);
+        pin.rotation.z = Math.PI / 2;
+        pin.position.set(s * R, 0, 0);
+        pivot.add(pin);
+      });
+      group.add(pivot);
+      const axis = new THREE.Vector3(i % 2 ? 1 : 0, i % 2 ? 0 : 1, i === 2 ? 1 : 0).normalize();
+      rings.push({ pivot, axis, speed, base: pivot.rotation.clone() });
     });
-    group.add(beams);
 
-    const key = new THREE.SpotLight(PURPLE, 300, 60, 0.6, 0.6, 1.4);
-    key.position.set(-9, 16, 12);
-    key.target.position.set(0, 4, 0);
-    group.add(key, key.target);
-    const fill = new THREE.PointLight('#c9c4ff', 40, 30, 1.6);
-    fill.position.set(8, 6, 10);
-    group.add(fill);
-    const back = new THREE.PointLight(CYAN, 26, 22, 1.6);
-    back.position.set(4, 3, -5);
-    group.add(back);
-    group.position.y = 0.8;
+    // núcleo: esfera de vidro com uma luz lavanda e um ponto ciano dentro
+    const shell = new THREE.Mesh(
+      new THREE.SphereGeometry(1.05, 64, 48),
+      this.high
+        ? new THREE.MeshPhysicalMaterial({ color: '#e8e6ff', metalness: 0, roughness: 0.04, transmission: 1, thickness: 1.2, ior: 1.5, iridescence: 0.35, clearcoat: 1, envMapIntensity: 1.2 })
+        : new THREE.MeshStandardMaterial({ color: '#2a2a40', metalness: 0.4, roughness: 0.1, transparent: true, opacity: 0.4 }),
+    );
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 4), new THREE.MeshBasicMaterial({ color: PURPLE.clone().multiplyScalar(1.6), toneMapped: false }));
+    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.12, 24, 16), new THREE.MeshBasicMaterial({ color: CYAN.clone().multiplyScalar(2), toneMapped: false }));
+    const coreLight = new THREE.PointLight(PURPLE, 26, 12, 1.6);
+    group.add(shell, core, spark, coreLight);
+
+    // luzes de estúdio para o metal
+    const key = new THREE.DirectionalLight('#f2eeff', 2.2);
+    key.position.set(-6, 10, 8);
+    const rim = new THREE.PointLight(CYAN, 30, 24, 1.6);
+    rim.position.set(6, 6, -6);
+    const fill = new THREE.PointLight('#b8a8ff', 24, 26, 1.6);
+    fill.position.set(7, 3, 9);
+    this.scene.add(key, rim, fill);
     this.scene.add(group);
 
-    // Introdução: a marca se desenha, o portal acende, os feixes aparecem.
-    const headLight = new THREE.PointLight('#ffffff', 0, 8, 2);
-    group.add(headLight);
+    // Introdução: os anéis chegam girando e se encaixam; o núcleo acende.
     let intro = this.reducedIntro ? 1 : 0;
     let playing = false;
-    const setDraw = (k: number) => {
-      drawn.forEach(({ geo, total }) => geo.setDrawRange(0, Math.floor((total * k) / 6) * 6));
-      caps.forEach((c, i) => c.scale.setScalar(Math.max(0.0001, THREE.MathUtils.smoothstep(k, i % 2 ? 0.92 : 0.0, i % 2 ? 1 : 0.08))));
+    const apply = (k: number) => {
+      rings.forEach((r, i) => {
+        const e = THREE.MathUtils.clamp(k * 1.4 - i * 0.12, 0, 1);
+        const ease = 1 - Math.pow(1 - e, 3);
+        r.pivot.scale.setScalar(Math.max(0.0001, 0.6 + ease * 0.4));
+        r.pivot.visible = e > 0;
+      });
+      const c = THREE.MathUtils.smoothstep(k, 0.55, 1);
+      core.scale.setScalar(Math.max(0.0001, c));
+      spark.scale.setScalar(Math.max(0.0001, c));
+      coreLight.intensity = 26 * c;
+      shell.scale.setScalar(Math.max(0.0001, THREE.MathUtils.smoothstep(k, 0.35, 0.8)));
     };
-    setDraw(intro);
+    apply(intro);
     this.introStart = () => {
       intro = 0;
       playing = true;
@@ -428,30 +442,28 @@ export class World {
     this.introSkip = () => {
       intro = 1;
       playing = false;
-      setDraw(1);
+      apply(1);
     };
+    let spin = 0;
     this.updaters.push((t, dt) => {
       if (playing && intro < 1) {
-        intro = Math.min(1, intro + dt / 3.2);
-        const k = 1 - Math.pow(1 - intro, 3);
-        setDraw(k);
-        const p = head[Math.min(head.length - 1, Math.floor(k * (head.length - 1)))];
-        headLight.position.copy(p);
-        headLight.intensity = intro < 1 ? 30 : 0;
+        intro = Math.min(1, intro + dt / 3);
+        apply(intro);
       }
-      const k = intro;
-      ringMat.uniforms.uTime.value = t;
-      ringMat.uniforms.uIntro.value = THREE.MathUtils.smoothstep(k, 0.2, 0.9) * 1.02;
-      corona.material.opacity = 0.14 * THREE.MathUtils.smoothstep(k, 0.5, 1);
-      beamMat.uniforms.uTime.value = t;
-      beamMat.uniforms.uI.value = THREE.MathUtils.smoothstep(k, 0.6, 1);
-      portal.rotation.z = Math.sin(t * 0.1) * 0.05;
-      dots.forEach((d, i) => {
-        d.m.position.y = d.y + Math.sin(t * 1.4 + i) * 0.25;
-        d.light.position.y = d.m.position.y;
-        d.m.scale.setScalar(Math.max(0.0001, THREE.MathUtils.smoothstep(k, 0.85, 1)));
+      // gira mais rápido durante a montagem e quando o mouse se move
+      const boost = 1 + (1 - intro) * 8 + this.pointerCur.length() * 0.6;
+      spin += dt * boost;
+      rings.forEach((r) => {
+        r.pivot.rotation.copy(r.base);
+        r.pivot.rotateOnAxis(r.axis, spin * r.speed);
       });
-      group.rotation.y = Math.sin(t * 0.2) * 0.1;
+      group.position.y = 5.2 + Math.sin(t * 0.7) * 0.18;
+      group.rotation.y = this.pointerCur.x * 0.35;
+      group.rotation.x = -this.pointerCur.y * 0.2;
+      core.rotation.y = t * 0.4;
+      const pulse = 0.85 + Math.sin(t * 1.6) * 0.15;
+      (core.material as THREE.MeshBasicMaterial).color.copy(PURPLE).multiplyScalar(1.4 * pulse);
+      spark.position.set(Math.cos(t * 0.9) * 0.22, Math.sin(t * 1.3) * 0.18, Math.sin(t * 0.9) * 0.22);
     });
   }
 
@@ -508,6 +520,7 @@ export class World {
     });
     strips.material = this.stripMat;
     this.scene.add(pillars, strips);
+    this.corridor.push(pillars, strips);
     // Luzes roxas espaçadas ao longo do corredor.
     for (let z = -45; z > -165; z -= 30) {
       const l = new THREE.PointLight(PURPLE, 40, 22, 1.7);
@@ -643,7 +656,7 @@ export class World {
           gl_Position = projectionMatrix * mv;
           gl_PointSize = (aT > 1.5 ? 3.0 : 1.4 + aR * 1.8) * uPixel * uEnergy * 22.0 / -mv.z;
           vT = aT;
-          vA = 0.55 + 0.45 * sin(uTime * 2.0 + aR * 30.0);
+          vA = (0.55 + 0.45 * sin(uTime * 2.0 + aR * 30.0)) * (1.0 - smoothstep(55.0, 110.0, -mv.z));
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uPurple; uniform vec3 uCyan; varying float vT; varying float vA;
@@ -800,7 +813,9 @@ export class World {
     // atmosfera: interpola a cor da névoa entre os capítulos
     const f = Math.max(0, Math.min(FOGS.length - 1.001, s.fog));
     const i = Math.floor(f);
-    this.fog.color.copy(FOGS[i]).lerp(FOGS[i + 1], f - i);
+    this.fogBase.copy(FOGS[i]).lerp(FOGS[i + 1], f - i);
+    // a névoa usa o tom do horizonte: o que está longe some no céu, sem silhuetas pretas
+    this.fog.color.copy(this.fogBase).multiplyScalar(1.6).add(HORIZON_TINT);
     (this.scene.background as THREE.Color).copy(this.fog.color);
     this.fog.density = 0.026 + Math.sin(Math.min(f, 3) * Math.PI) * 0.004;
 
@@ -821,6 +836,7 @@ export class World {
 
     // o espelho só é renderizado enquanto está perto da câmera
     if (this.reflector) this.reflector.visible = s.pz > -175;
+    this.corridor.forEach((o) => (o.visible = s.pz < 4));
 
     this.tmpV.copy(this.camera.position);
     for (const u of this.updaters) u(t, dt);
@@ -858,14 +874,3 @@ function mulberry(seed: number) {
   };
 }
 
-/** Curva que segue uma polilinha (preserva cantos e arcos do SVG). */
-class PolyCurve extends THREE.Curve<THREE.Vector3> {
-  constructor(private pts: THREE.Vector3[]) {
-    super();
-  }
-  getPoint(t: number, target = new THREE.Vector3()) {
-    const f = t * (this.pts.length - 1);
-    const i = Math.min(Math.floor(f), this.pts.length - 2);
-    return target.copy(this.pts[i]).lerp(this.pts[i + 1], f - i);
-  }
-}

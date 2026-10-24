@@ -27,9 +27,6 @@ export function Hud({ chapter, progress, onNav, sound, onSound }: { chapter: num
           <b>{String(chapter + 1).padStart(2, '0')}</b> <span key={chapter} className="hud__flip">{CHAPTERS[chapter].label}</span>
         </span>
         <span className="hud__right">
-          <button className="hud__btn" onClick={() => window.dispatchEvent(new Event('sd:terminal'))} data-cursor title="Atalho: tecla /">
-            Terminal <kbd>/</kbd>
-          </button>
           <button className={`hud__btn hud__sound${sound ? ' is-on' : ''}`} onClick={onSound} aria-pressed={sound} data-cursor>
             <span className="eq" aria-hidden="true"><i /><i /><i /></span> {sound ? 'Som ligado' : 'Som desligado'}
           </button>
