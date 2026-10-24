@@ -47,6 +47,10 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
           <h1 className="hero__name" id="hero-title">
             <span className="mask"><span>Paulo</span></span>
             <span className="mask"><span className="thin">Silva</span></span>
+            <span className="ink" aria-hidden="true">
+              <span className="mask"><span>Paulo</span></span>
+              <span className="mask"><span>Silva</span></span>
+            </span>
           </h1>
           <a className="hero__scroll mono" href="#manifesto">
             <i /> Role para explorar

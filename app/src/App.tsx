@@ -243,6 +243,37 @@ export default function App() {
     };
   }, [phase]);
 
+  /* ---------- "hover ink": rastro líquido dentro do nome ---------- */
+  useEffect(() => {
+    if (phase !== 'in' || mode !== 'full' || isCoarse()) return;
+    const h1 = document.querySelector<HTMLElement>('.hero__name');
+    const ink = h1?.querySelector<HTMLElement>('.ink');
+    if (!h1 || !ink) return;
+    const pts: { x: number; y: number; r: number }[] = [];
+    let raf = 0;
+    const move = (e: PointerEvent) => {
+      const b = h1.getBoundingClientRect();
+      pts.unshift({ x: e.clientX - b.left, y: e.clientY - b.top, r: 150 });
+      if (pts.length > 14) pts.pop();
+    };
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      pts.forEach((p) => (p.r *= 0.94));
+      while (pts.length && pts[pts.length - 1].r < 6) pts.pop();
+      const m = pts.length
+        ? pts.map((p) => `radial-gradient(circle ${p.r.toFixed(0)}px at ${p.x.toFixed(0)}px ${p.y.toFixed(0)}px, #000 35%, transparent 100%)`).join(',')
+        : 'linear-gradient(transparent, transparent)';
+      ink.style.webkitMaskImage = m;
+      ink.style.maskImage = m;
+    };
+    tick();
+    window.addEventListener('pointermove', move);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointermove', move);
+    };
+  }, [phase, mode]);
+
   /* ---------- ponteiro: parallax, hover e clique nas placas ---------- */
   useEffect(() => {
     if (phase !== 'in' || mode !== 'full') return;

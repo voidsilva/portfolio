@@ -555,6 +555,35 @@ export class World {
     }
     group.add(lanternLight);
 
+    // Palavra gigante do outro lado do lago: fica atrás da cena e reflete na água.
+    const wc = document.createElement('canvas');
+    wc.width = 2048;
+    wc.height = 400;
+    const wg = wc.getContext('2d')!;
+    wg.font = '800 330px Montserrat, sans-serif';
+    wg.textAlign = 'center';
+    wg.textBaseline = 'middle';
+    const grad = wg.createLinearGradient(0, 40, 0, 360);
+    grad.addColorStop(0, 'rgba(238,240,246,0.95)');
+    grad.addColorStop(1, 'rgba(165,150,242,0.55)');
+    wg.fillStyle = grad;
+    wg.fillText('SILVADEV', 1024, 215);
+    const wtex = new THREE.CanvasTexture(wc);
+    wtex.colorSpace = THREE.SRGBColorSpace;
+    wtex.anisotropy = 8;
+    const word = new THREE.Mesh(
+      new THREE.PlaneGeometry(34, 6.6),
+      new THREE.MeshBasicMaterial({ map: wtex, transparent: true, depthWrite: false, opacity: 1, fog: false, color: new THREE.Color(0.36, 0.36, 0.44) }),
+    );
+    word.position.set(1.5, 3.2, -24);
+    word.renderOrder = 2; // desenha depois do céu (que é transparente e fica no plano de fundo)
+    group.add(word);
+    this.disposables.push(wtex);
+    this.updaters.push((t) => {
+      word.position.y = 3.2 + Math.sin(t * 0.4) * 0.08;
+      word.visible = this.cur.pz > -20;
+    });
+
     // luar suave vindo de trás, para recortar as silhuetas
     const moon = new THREE.DirectionalLight('#b8c4ff', 0.7);
     moon.position.set(-8, 10, -12);
@@ -809,20 +838,10 @@ export class World {
       const th = Math.PI * (1 + Math.sqrt(5)) * k;
       const rad = i % 5 === 0 ? 5.6 * Math.cbrt(rand()) : 5.6;
       A.set([rad * Math.cos(th) * Math.sin(phi), rad * Math.sin(th) * Math.sin(phi), rad * Math.cos(phi)], i * 3);
-      // B: três órbitas inclinadas + aglomerado central
-      const ring = i % 4;
-      if (ring === 3) {
-        const r2 = 1.6 * Math.cbrt(rand());
-        const a = rand() * Math.PI * 2;
-        const b = Math.acos(2 * rand() - 1);
-        B.set([r2 * Math.sin(b) * Math.cos(a), r2 * Math.sin(b) * Math.sin(a), r2 * Math.cos(b)], i * 3);
-      } else {
-        const rr = [4.2, 6.6, 9][ring] + (rand() - 0.5) * 0.25;
-        const a = rand() * Math.PI * 2;
-        const v = new THREE.Vector3(Math.cos(a) * rr, (rand() - 0.5) * 0.15, Math.sin(a) * rr);
-        v.applyEuler(new THREE.Euler([0.4, -0.7, 1.2][ring], [0, 0.6, -0.3][ring], [0.2, 0.5, 0][ring]));
-        B.set([v.x, v.y, v.z], i * 3);
-      }
+      // B: fita ondulante (a onda anima no shader)
+      const u = rand() * 2 - 1;
+      const vv = rand() * 2 - 1;
+      B.set([u * 13, vv * 0.25, vv * 3.2], i * 3);
       // C: a marca NX
       const [lx, ly, tone] = logo[i % logo.length];
       const w = toWorld(lx, ly, ls);
@@ -848,13 +867,16 @@ export class World {
         void main(){
           float m1 = smoothstep(0.0, 1.0, clamp(uMorph, 0.0, 1.0));
           float m2 = smoothstep(0.0, 1.0, clamp(uMorph - 1.0, 0.0, 1.0));
-          vec3 p = mix(mix(position, aB, m1), aC, m2);
+          vec3 b = aB;
+          b.y += sin(b.x * 0.45 + uTime * 0.9) * 1.6 + sin(b.z * 0.9 + b.x * 0.2 + uTime * 1.3) * 0.5;
+          b.z += cos(b.x * 0.3 + uTime * 0.6) * 1.2;
+          vec3 p = mix(mix(position, b, m1), aC, m2);
           // turbulência: mais forte no meio de cada transição
           float chaos = sin(m1 * 3.14159) + sin(m2 * 3.14159);
           float t = uTime * (0.4 + aR * 0.6);
           p += vec3(sin(t + aR * 40.0), cos(t * 1.3 + aR * 20.0), sin(t * 0.7 + aR * 60.0)) * (0.05 + chaos * 1.6 * aR);
           // as órbitas giram
-          float ang = uTime * 0.25 * m1 * (1.0 - m2) * (0.5 + aR);
+          float ang = 0.0;
           p.xz = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * p.xz;
           p.xy += uPointer * 0.6 * (1.0 - m2) * aR;
           vec4 mv = modelViewMatrix * vec4(p, 1.0);

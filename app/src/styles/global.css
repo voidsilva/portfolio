@@ -1637,3 +1637,30 @@ button:focus-visible .roll::after {
   padding-right: max(var(--g), calc((100vw - 1200px) / 2));
   background: linear-gradient(180deg, transparent, rgba(10, 13, 20, 0.88) 18%, rgba(10, 13, 20, 0.88) 82%, transparent);
 }
+
+/* Hover Ink: um brilho líquido que o cursor revela dentro do nome */
+.hero__name {
+  position: relative;
+}
+.ink {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(transparent, transparent);
+  mask-image: linear-gradient(transparent, transparent);
+}
+.ink .mask > span {
+  color: transparent;
+  -webkit-text-stroke: 0;
+  background: linear-gradient(110deg, #a596f2 0%, #8fd3df 25%, #f1e4ff 45%, #a596f2 65%, #ffb36b 85%, #8fd3df 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: inkflow 6s linear infinite;
+  filter: drop-shadow(0 0 18px rgba(165, 150, 242, 0.45));
+}
+@keyframes inkflow {
+  to {
+    background-position: 300% 0;
+  }
+}
