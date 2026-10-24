@@ -147,7 +147,9 @@ export class World {
     this.buildDust();
 
     // Pós-processamento: bloom (desktop), aberração, glitch, grão e vinheta.
-    this.composer = new EffectComposer(this.renderer);
+    // MSAA no alvo do compositor: bordas lisas mesmo com pós-processamento
+    const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: this.high ? 4 : 0 });
+    this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     if (this.high) {
       // Higieniza o quadro antes do bloom: valores inválidos (NaN/∞) apagariam a tela inteira.
@@ -195,7 +197,7 @@ export class World {
           col.b = texture2D(tDiffuse, uv - dir * ab).b;
           col += g * 0.12 * vec3(0.55, 0.36, 0.96) * step(0.96, rand(vec2(floor(uv.y * 160.0), floor(uTime * 30.0))));
           col *= smoothstep(1.1, 0.32, d);
-          col += (rand(uv * uRes + fract(uTime)) - 0.5) * 0.028;
+          col += (rand(uv * uRes + fract(uTime)) - 0.5) * 0.014;
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -494,16 +496,21 @@ export class World {
             u0 = Math.min(u0, uu); u1 = Math.max(u1, uu); v0 = Math.min(v0, vv); v1 = Math.max(v1, vv);
           }
           for (let i = 0; i < pos.count; i++) {
-            uv[i * 2] = 1 - (uv[i * 2] - u0) / (u1 - u0);
+            uv[i * 2] = (uv[i * 2] - u0) / (u1 - u0);
             uv[i * 2 + 1] = (uv[i * 2 + 1] - v0) / (v1 - v0);
           }
           g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
           screenMat = new THREE.MeshBasicMaterial({ map: this.screenTextures[0], toneMapped: false, color: new THREE.Color(0.85, 0.85, 0.9), side: THREE.DoubleSide });
           m.material = screenMat;
-        } else if (mat.envMapIntensity !== undefined) mat.envMapIntensity = 1.4;
+        } else if (mat.envMapIntensity !== undefined) {
+          mat.envMapIntensity = 1.1;
+          // o plástico bege do modelo estoura com a luz da lanterna: escurece um pouco
+          mat.color.multiplyScalar(0.72);
+          [mat.map, mat.normalMap, mat.roughnessMap].forEach((t) => t && (t.anisotropy = 8));
+        }
       });
       group.add(lap);
-      const glow = new THREE.PointLight('#b9b3ff', 3, 4, 2);
+      const glow = new THREE.PointLight('#b9b3ff', 1.2, 4, 2);
       glow.position.set(-0.2, top + 0.8, 0.9);
       group.add(glow);
     }
@@ -592,7 +599,7 @@ export class World {
     let playing = false;
     const apply = (k: number) => {
       const lamp = THREE.MathUtils.smoothstep(k, 0.1, 0.5);
-      lanternLight.intensity = 22 * lamp;
+      lanternLight.intensity = 13 * lamp;
       if (flame) flame.scale.setScalar(Math.max(0.0001, lamp)).setY(Math.max(0.0001, lamp * 1.6));
       if (screenMat) screenMat.color.setScalar(0.85 * THREE.MathUtils.smoothstep(k, 0.45, 0.8));
       fmat.uniforms.uI.value = THREE.MathUtils.smoothstep(k, 0.6, 1);
@@ -616,7 +623,7 @@ export class World {
       }
       if (intro >= 1) {
         const fl = 1 + Math.sin(t * 9.3) * 0.06 + Math.sin(t * 23.7) * 0.04 + Math.sin(t * 3.1) * 0.05;
-        lanternLight.intensity = 22 * fl;
+        lanternLight.intensity = 13 * fl;
         if (flame) flame.scale.set(fl, 1.6 * fl, fl);
       }
       // a tela troca de projeto a cada 4 segundos
