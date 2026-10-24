@@ -69,7 +69,7 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
         {projects.map((p, i) => (
           <article className="proj" id={`p-${p.id}`} key={p.id} aria-labelledby={`t-${p.id}`}>
             <div className="sticky proj__stage">
-              <div className="proj__card">
+              <div className="proj__text">
                 <p className="proj__kicker">
                   <b>{p.index}</b> {p.kicker}
                 </p>
@@ -104,35 +104,17 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
             </div>
           </article>
         ))}
-        <div className="marquee" aria-hidden="true">
-          <div className="marquee__track">
-            {[0, 1].map((k) => (
-              <span key={k}>
-                {stack.map((t) => (
-                  <em key={t.name}>
-                    {t.name}
-                    <i>✦</i>
-                  </em>
-                ))}
-              </span>
-            ))}
-          </div>
-        </div>
         <div className="archive">
           <p className="mono ch__label">Mais trabalhos</p>
-          <ul className="bento">
-            {archive.map((a, k) => (
-              <li key={a.name} style={{ ['--h' as string]: String((k * 47) % 360) }}>
+          <ul className="worklist">
+            {archive.map((a) => (
+              <li key={a.name}>
                 <a href={a.url} target="_blank" rel="noopener noreferrer" data-cursor>
-                  <span className="bento__cover" aria-hidden="true">
-                    <b>{a.name.slice(0, 2)}</b>
-                  </span>
-                  <strong>{a.name}</strong>
+                  <strong>
+                    <Roll>{a.name}</Roll>
+                  </strong>
                   <span>{a.note}</span>
                   <em>{a.tags.join(' · ')}</em>
-                  <span className="bento__go" aria-hidden="true">
-                    <Arrow />
-                  </span>
                 </a>
               </li>
             ))}
