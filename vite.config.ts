@@ -1,14 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// O build vai para /docs, que é a pasta publicada pelo GitHub Pages.
+// O código-fonte fica em app/. O build vai para a raiz do repositório,
+// que é a pasta publicada pelo GitHub Pages (com o CNAME do silvadev.xyz).
 export default defineConfig({
+  root: 'app',
+  publicDir: '../public',
   plugins: [react()],
   base: '/',
   build: {
-    outDir: 'docs',
-    emptyOutDir: true,
-    assetsDir: '',
+    outDir: '..',
+    emptyOutDir: false,
+    assetsDir: 'assets',
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {

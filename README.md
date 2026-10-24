@@ -16,13 +16,13 @@ Uma experiência com um núcleo 3D facetado (Three.js) que se abre e se recompõ
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm run build    # gera a pasta docs/, publicada pelo GitHub Pages
+npm run build    # gera index.html e assets/ na raiz, publicados pelo GitHub Pages
 ```
 
 ## Estrutura
 
 ```
-src/
+app/src/
 ├── data/content.ts      # projetos, stack e textos (tudo verificado nos repositórios)
 ├── three/CoreScene.ts   # núcleo 3D, partículas, luzes e câmera
 ├── components/          # Hero, Manifesto, Projects, About, Stack, Outro, Nav, Cursor

@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "build": "tsc -p . && node -e \"require('fs').rmSync('assets',{recursive:true,force:true})\" && vite build",
+    "preview": "vite preview --outDir .."
   },
   "dependencies": {
     "gsap": "^3.12.5",
