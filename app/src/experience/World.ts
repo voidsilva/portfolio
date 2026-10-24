@@ -40,7 +40,7 @@ export const SLOTS = Array.from({ length: 5 }, (_, i) => {
 });
 
 export const KEYS: Record<string, Rig> = {
-  hero: { px: 0, py: 3.4, pz: 27, lx: 0, ly: 4.6, lz: 0, roll: 0, fog: 0, glitch: 0, morph: 0, energy: 1 },
+  hero: { px: -4.2, py: 3.4, pz: 27, lx: -4.6, ly: 4.8, lz: 0, roll: 0, fog: 0, glitch: 0, morph: 0, energy: 1 },
   over: { px: 0, py: 13.5, pz: -8, lx: 0, ly: 4, lz: -48, roll: 0, fog: 0.6, glitch: 0, morph: 0, energy: 1 },
   corridor: { px: 0, py: 3.2, pz: -150, lx: 0, ly: 3.4, lz: -200, roll: 0.04, fog: 1, glitch: 0, morph: 0, energy: 1.2 },
   ...Object.fromEntries(
@@ -84,6 +84,10 @@ export class World {
   private high: boolean;
   private look = new THREE.Vector3();
   private tmpV = new THREE.Vector3();
+  private reducedIntro = false;
+  /** Reinicia o desenho da marca (chamado ao entrar na experiência). */
+  introStart: () => void = () => {};
+  introSkip: () => void = () => {};
 
   constructor(canvas: HTMLCanvasElement, quality: Quality, private screenTextures: THREE.Texture[]) {
     this.high = quality === 'high';
@@ -113,7 +117,21 @@ export class World {
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     if (this.high) {
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.5, 0.42);
+      // Higieniza o quadro antes do bloom: valores inválidos (NaN/∞) apagariam a tela inteira.
+      this.composer.addPass(
+        new ShaderPass({
+          uniforms: { tDiffuse: { value: null } },
+          vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+          fragmentShader: /* glsl */ `
+            uniform sampler2D tDiffuse; varying vec2 vUv;
+            void main(){
+              vec4 c = texture2D(tDiffuse, vUv);
+              if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0);
+              gl_FragColor = vec4(clamp(c.rgb, 0.0, 24.0), 1.0);
+            }`,
+        }),
+      );
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.5, 0.5, 0.5);
       this.composer.addPass(this.bloom);
     }
     this.finalPass = new ShaderPass({
@@ -161,17 +179,65 @@ export class World {
 
   private buildFloor() {
     if (this.high) {
+      // Espelho d'água: o reflexo é distorcido por ondas suaves.
+      const shader = {
+        name: 'WaterReflector',
+        uniforms: {
+          color: { value: null },
+          tDiffuse: { value: null },
+          textureMatrix: { value: null },
+          uTime: { value: 0 },
+          uFog: { value: new THREE.Color() },
+          uDensity: { value: 0.026 },
+        },
+        vertexShader: /* glsl */ `
+          uniform mat4 textureMatrix; varying vec4 vUv; varying vec3 vW; varying float vD;
+          #include <common>
+          #include <logdepthbuf_pars_vertex>
+          void main(){
+            vUv = textureMatrix * vec4(position, 1.0);
+            vW = (modelMatrix * vec4(position, 1.0)).xyz;
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            vD = -mv.z;
+            gl_Position = projectionMatrix * mv;
+            #include <logdepthbuf_vertex>
+          }`,
+        fragmentShader: /* glsl */ `
+          uniform vec3 color; uniform sampler2D tDiffuse; uniform float uTime; uniform vec3 uFog; uniform float uDensity; varying vec4 vUv; varying vec3 vW; varying float vD;
+          #include <logdepthbuf_pars_fragment>
+          void main(){
+            #include <logdepthbuf_fragment>
+            vec2 w = vec2(
+              sin(vW.x * 1.7 + uTime * 0.9) + sin(vW.z * 2.3 - uTime * 1.1) + sin((vW.x + vW.z) * 4.1 + uTime * 1.7) * 0.5,
+              cos(vW.z * 1.9 + uTime * 0.8) + cos(vW.x * 2.7 - uTime * 1.3) + cos((vW.x - vW.z) * 3.7 + uTime * 1.5) * 0.5
+            );
+            vec4 uv = vUv;
+            uv.xy += w * 0.0045 * uv.w;
+            vec4 base = texture2DProj(tDiffuse, uv);
+            float f = 1.0 - exp(-uDensity * uDensity * vD * vD);
+            gl_FragColor = vec4(mix(base.rgb * color, uFog, f), 1.0);
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
+          }`,
+      };
       const r = new Reflector(new THREE.PlaneGeometry(160, 260), {
-        textureWidth: Math.round(window.innerWidth * 0.5),
-        textureHeight: Math.round(window.innerHeight * 0.5),
-        color: new THREE.Color('#5a5a6a'),
+        textureWidth: Math.round(window.innerWidth * 0.6),
+        textureHeight: Math.round(window.innerHeight * 0.6),
+        color: new THREE.Color('#9a98b4'),
         clipBias: 0.003,
+        shader,
       });
       r.rotation.x = -Math.PI / 2;
       r.position.set(0, 0, -90);
       this.scene.add(r);
       this.reflector = r;
-      this.disposables.push(r.geometry, r.material as THREE.Material, r.getRenderTarget());
+      const mat = r.material as THREE.ShaderMaterial;
+      this.updaters.push((t) => {
+        mat.uniforms.uTime.value = t;
+        mat.uniforms.uFog.value.copy(this.fog.color);
+        mat.uniforms.uDensity.value = this.fog.density;
+      });
+      this.disposables.push(r.geometry, mat, r.getRenderTarget());
     }
     // Chão escuro com grade fina; no desktop fica sobre o espelho, translúcido.
     const grid = new THREE.Mesh(
@@ -179,16 +245,17 @@ export class World {
       new THREE.ShaderMaterial({
         transparent: true,
         depthWrite: false,
-        uniforms: { uColor: { value: PURPLE }, uBase: { value: new THREE.Color('#07080c') }, uSolid: { value: this.high ? 0.55 : 1 } },
+        uniforms: { uColor: { value: PURPLE }, uBase: { value: new THREE.Color('#07080c') }, uSolid: { value: this.high ? 0.3 : 1 }, uFog: { value: new THREE.Color() }, uDensity: { value: 0.026 } },
         vertexShader: /* glsl */ `varying vec3 vW; varying float vD; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; vec4 mv = viewMatrix * w; vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
         fragmentShader: /* glsl */ `
-          uniform vec3 uColor; uniform vec3 uBase; uniform float uSolid; varying vec3 vW; varying float vD;
+          uniform vec3 uColor; uniform vec3 uBase; uniform float uSolid; uniform vec3 uFog; uniform float uDensity; varying vec3 vW; varying float vD;
           float line(float v, float w){ float f = abs(fract(v) - 0.5); return smoothstep(w, 0.0, 0.5 - f); }
           void main(){
             float g = max(line(vW.x / 4.0, 0.012), line(vW.z / 4.0, 0.012));
             float fade = exp(-vD * 0.035);
             vec3 col = uBase + uColor * g * 0.2 * fade;
-            gl_FragColor = vec4(col, max(uSolid, g * 0.3 * fade));
+            float f = 1.0 - exp(-uDensity * uDensity * vD * vD);
+            gl_FragColor = vec4(mix(col, uFog, f), max(uSolid, g * 0.3 * fade));
           }
         `,
       }),
@@ -196,75 +263,197 @@ export class World {
     grid.rotation.x = -Math.PI / 2;
     grid.position.set(0, 0.01, -300);
     this.scene.add(grid);
+    const gm = grid.material as THREE.ShaderMaterial;
+    this.updaters.push(() => {
+      gm.uniforms.uFog.value.copy(this.fog.color);
+      gm.uniforms.uDensity.value = this.fog.density;
+    });
   }
 
   private buildMonolith() {
     const group = new THREE.Group();
     const scale = 0.19;
-    const mats = {
-      white: new THREE.MeshStandardMaterial({ color: '#1b1d26', metalness: 1, roughness: 0.22, envMapIntensity: 0.7 }),
-      purple: new THREE.MeshStandardMaterial({ color: '#2b1f52', metalness: 0.85, roughness: 0.25, envMapIntensity: 0.5, emissive: PURPLE, emissiveIntensity: 0.28 }),
-    };
-    // A marca em escala arquitetônica: cada traço vira um tubo de metal.
+    const tint = { white: new THREE.Color('#F4F5FA'), purple: PURPLE };
+    const glass = (tone: 'white' | 'purple') =>
+      this.high
+        ? new THREE.MeshPhysicalMaterial({
+            color: tone === 'white' ? '#dfe3f5' : '#cdbcff',
+            metalness: 0,
+            roughness: 0.06,
+            transmission: 1,
+            thickness: 0.9,
+            ior: 1.45,
+            iridescence: 0.7,
+            iridescenceIOR: 1.3,
+            clearcoat: 1,
+            clearcoatRoughness: 0.05,
+            envMapIntensity: 1.4,
+          })
+        : new THREE.MeshStandardMaterial({ color: '#1a1c26', metalness: 0.9, roughness: 0.2, transparent: true, opacity: 0.35 });
+
+    // A marca: tubos de vidro com um filamento de neon dentro.
+    const drawn: { geo: THREE.BufferGeometry; total: number }[] = [];
+    const caps: THREE.Object3D[] = [];
+    let head: THREE.Vector3[] = [];
     LOGO.strokes.forEach((st) => {
-      const { pts, closed } = pathPoints(st.d, 0.35);
+      const { pts, closed } = pathPoints(st.d, 0.3);
       const v = pts.map(([x, y]) => {
         const w = toWorld(x, y, scale);
         return new THREE.Vector3(w.x, w.y, 0);
       });
+      if (v.length > head.length) head = v;
       const curve = new PolyCurve(v);
       const r = (st.w / 2) * scale;
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, v.length * 2, r, 20, closed), mats[st.tone]);
-      group.add(tube);
+      const segs = v.length * 2;
+      const outer = new THREE.TubeGeometry(curve, segs, r, 28, closed);
+      const core = new THREE.TubeGeometry(curve, segs, r * 0.28, 10, closed);
+      const neon = new THREE.MeshBasicMaterial({ color: tint[st.tone].clone().multiplyScalar(st.tone === 'white' ? 1.15 : 2.4), toneMapped: false });
+      group.add(new THREE.Mesh(outer, glass(st.tone)), new THREE.Mesh(core, neon));
+      drawn.push({ geo: outer, total: outer.index!.count }, { geo: core, total: core.index!.count });
       if (!closed) {
         [v[0], v[v.length - 1]].forEach((p) => {
-          const cap = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), mats[st.tone]);
-          cap.position.copy(p);
-          group.add(cap);
+          const g = new THREE.Group();
+          g.position.copy(p);
+          g.add(new THREE.Mesh(new THREE.SphereGeometry(r, 28, 18), glass(st.tone)), new THREE.Mesh(new THREE.SphereGeometry(r * 0.28, 12, 8), neon));
+          group.add(g);
+          caps.push(g);
         });
       }
     });
-    // O ponto ciano da marca: uma esfera acesa que flutua.
+
+    // Ponto ciano: uma pequena estrela.
     const dots = LOGO.dots.map((d) => {
       const w = toWorld(d.cx, d.cy, scale);
-      const m = new THREE.Mesh(
-        new THREE.SphereGeometry(d.r * scale, 32, 20),
-        new THREE.MeshStandardMaterial({ color: CYAN, emissive: CYAN, emissiveIntensity: 1.1 }),
-      );
+      const m = new THREE.Mesh(new THREE.SphereGeometry(d.r * scale, 32, 20), new THREE.MeshBasicMaterial({ color: CYAN.clone().multiplyScalar(2.5), toneMapped: false }));
       m.position.set(w.x, w.y + 0.4, 0);
-      const light = new THREE.PointLight(CYAN, 16, 14, 1.8);
+      const light = new THREE.PointLight(CYAN, 22, 16, 1.8);
       light.position.copy(m.position);
       group.add(m, light);
       return { m, light, y: m.position.y };
     });
 
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(7.6, 7.66, 160),
-      new THREE.MeshBasicMaterial({ color: PURPLE, transparent: true, opacity: 0.9, side: THREE.DoubleSide, toneMapped: false }),
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.03;
-    group.add(ring);
+    // Portal: um anel de luz gigante atrás da marca, como um eclipse.
+    const portal = new THREE.Group();
+    portal.position.set(0, 4.6, -7);
+    const ringMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uIntro: { value: 0 }, uPurple: { value: PURPLE }, uCyan: { value: CYAN } },
+      vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: /* glsl */ `
+        uniform float uTime; uniform float uIntro; uniform vec3 uPurple; uniform vec3 uCyan; varying vec2 vUv;
+        void main(){
+          float a = vUv.x;
+          float sweep = smoothstep(0.0, 0.02, uIntro - a);
+          float hl = pow(0.5 + 0.5 * sin((a - uTime * 0.05) * 6.2832), 6.0);
+          vec3 col = mix(uPurple, uCyan, hl) * (1.2 + hl * 3.0);
+          float edge = 1.0 - abs(vUv.y - 0.5) * 2.0;
+          gl_FragColor = vec4(col * edge, edge * sweep);
+        }`,
+    });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(9.5, 0.05, 12, 400), ringMat);
+    ring.rotation.z = Math.PI / 2;
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(10.4, 0.015, 8, 400), ringMat);
+    ring2.rotation.z = Math.PI / 2;
+    const halo = haloTexture();
+    this.disposables.push(halo);
+    const corona = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: PURPLE, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    corona.scale.set(34, 34, 1);
+    portal.add(corona, ring, ring2);
+    group.add(portal);
 
-    const key = new THREE.SpotLight(PURPLE, 260, 60, 0.55, 0.6, 1.4);
+    // Feixes de luz volumétricos caindo do alto.
+    const beamMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color('#9d80ff') }, uI: { value: 0 } },
+      vertexShader: /* glsl */ `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vW = (modelMatrix * vec4(position,1.0)).xyz; gl_Position = projectionMatrix * viewMatrix * vec4(vW, 1.0); }`,
+      fragmentShader: /* glsl */ `
+        uniform float uTime; uniform vec3 uColor; uniform float uI; varying vec2 vUv; varying vec3 vW;
+        void main(){
+          float x = 1.0 - abs(vUv.x - 0.5) * 2.0;
+          float fall = smoothstep(0.0, 0.45, vUv.y) * smoothstep(1.0, 0.55, vUv.y);
+          float flicker = 0.75 + 0.25 * sin(uTime * 0.7 + vW.x * 2.0) * sin(uTime * 0.43 + vW.z);
+          float a = pow(x, 2.5) * fall * flicker * 0.16 * uI;
+          gl_FragColor = vec4(uColor, a);
+        }`,
+    });
+    const beams = new THREE.Group();
+    const beamDefs: [number, number, number, number][] = [
+      [-4.5, -2, 0.22, 3.2],
+      [-1.5, -3, 0.08, 2.4],
+      [2.2, -2.5, -0.12, 3.6],
+      [5, -1.5, -0.25, 2.6],
+      [0.4, -4.5, 0.02, 4.2],
+    ];
+    beamDefs.forEach(([x, z, rz, w]) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 26), beamMat);
+      m.position.set(x, 11, z);
+      m.rotation.set(0, 0, rz);
+      beams.add(m);
+      const m2 = m.clone();
+      m2.rotation.y = Math.PI / 2;
+      beams.add(m2);
+    });
+    group.add(beams);
+
+    const key = new THREE.SpotLight(PURPLE, 300, 60, 0.6, 0.6, 1.4);
     key.position.set(-9, 16, 12);
     key.target.position.set(0, 4, 0);
     group.add(key, key.target);
-    const fill = new THREE.PointLight('#c9c4ff', 34, 30, 1.6);
+    const fill = new THREE.PointLight('#c9c4ff', 40, 30, 1.6);
     fill.position.set(8, 6, 10);
     group.add(fill);
-    const back = new THREE.PointLight(CYAN, 20, 22, 1.6);
-    back.position.set(4, 3, -6);
+    const back = new THREE.PointLight(CYAN, 26, 22, 1.6);
+    back.position.set(4, 3, -5);
     group.add(back);
-    group.position.y = 0.6;
-
+    group.position.y = 0.8;
     this.scene.add(group);
-    this.updaters.push((t) => {
+
+    // Introdução: a marca se desenha, o portal acende, os feixes aparecem.
+    const headLight = new THREE.PointLight('#ffffff', 0, 8, 2);
+    group.add(headLight);
+    let intro = this.reducedIntro ? 1 : 0;
+    let playing = false;
+    const setDraw = (k: number) => {
+      drawn.forEach(({ geo, total }) => geo.setDrawRange(0, Math.floor((total * k) / 6) * 6));
+      caps.forEach((c, i) => c.scale.setScalar(Math.max(0.0001, THREE.MathUtils.smoothstep(k, i % 2 ? 0.92 : 0.0, i % 2 ? 1 : 0.08))));
+    };
+    setDraw(intro);
+    this.introStart = () => {
+      intro = 0;
+      playing = true;
+    };
+    this.introSkip = () => {
+      intro = 1;
+      playing = false;
+      setDraw(1);
+    };
+    this.updaters.push((t, dt) => {
+      if (playing && intro < 1) {
+        intro = Math.min(1, intro + dt / 3.2);
+        const k = 1 - Math.pow(1 - intro, 3);
+        setDraw(k);
+        const p = head[Math.min(head.length - 1, Math.floor(k * (head.length - 1)))];
+        headLight.position.copy(p);
+        headLight.intensity = intro < 1 ? 30 : 0;
+      }
+      const k = intro;
+      ringMat.uniforms.uTime.value = t;
+      ringMat.uniforms.uIntro.value = THREE.MathUtils.smoothstep(k, 0.2, 0.9) * 1.02;
+      corona.material.opacity = 0.28 * THREE.MathUtils.smoothstep(k, 0.5, 1);
+      beamMat.uniforms.uTime.value = t;
+      beamMat.uniforms.uI.value = THREE.MathUtils.smoothstep(k, 0.6, 1);
+      portal.rotation.z = Math.sin(t * 0.1) * 0.05;
       dots.forEach((d, i) => {
         d.m.position.y = d.y + Math.sin(t * 1.4 + i) * 0.25;
         d.light.position.y = d.m.position.y;
+        d.m.scale.setScalar(Math.max(0.0001, THREE.MathUtils.smoothstep(k, 0.85, 1)));
       });
-      group.rotation.y = Math.sin(t * 0.2) * 0.12;
+      group.rotation.y = Math.sin(t * 0.2) * 0.1;
     });
   }
 
@@ -605,7 +794,7 @@ export class World {
   private apply(t: number, dt: number) {
     const s = this.cur;
     const p = this.pointerCur;
-    this.camera.position.set(s.px + p.x * 0.7, s.py + p.y * 0.45, s.pz);
+    this.camera.position.set(s.px + p.x * 1.5, s.py + p.y * 0.8, s.pz);
     this.look.set(s.lx + p.x * 0.4, s.ly + p.y * 0.3, s.lz);
     this.camera.up.set(Math.sin(s.roll), Math.cos(s.roll), 0);
     this.camera.lookAt(this.look);
@@ -630,7 +819,7 @@ export class World {
 
     this.finalPass.uniforms.uTime.value = t;
     this.finalPass.uniforms.uGlitch.value = s.glitch;
-    if (this.bloom) this.bloom.strength = 0.6 + s.glitch * 0.8;
+    if (this.bloom) this.bloom.strength = 0.5 + s.glitch * 0.8;
 
     // o espelho só é renderizado enquanto está perto da câmera
     if (this.reflector) this.reflector.visible = s.pz > -175;

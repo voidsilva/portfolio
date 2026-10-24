@@ -90,6 +90,7 @@ export default function App() {
       const all = [erp, term, ...loaded];
       setImages([(erp.image as HTMLCanvasElement).toDataURL('image/webp', 0.85), (term.image as HTMLCanvasElement).toDataURL('image/webp', 0.85), ...files]);
       if (m && canvas.current) {
+        if (innerWidth < 820) Object.assign(m.KEYS.hero, { px: 0, lx: 0, ly: 3.2 });
         world.current = new m.World(canvas.current, quality(), all);
         keys.current = m.KEYS;
         world.current.rig.pz = 70;
@@ -124,6 +125,7 @@ export default function App() {
     if (mode === 'lite') {
       if (w && K) {
         w.stop();
+        w.introSkip();
         Object.assign(w.rig, K.hero);
         w.renderOnce();
       }
@@ -141,6 +143,7 @@ export default function App() {
     const ctx = gsap.context(() => {
       // Intro: a câmera chega de longe com um glitch.
       if (w && K) {
+        w.introStart();
         gsap.fromTo(w.rig, { glitch: 1 }, { glitch: 0, duration: 1.4, ease: 'power2.out' });
         gsap.to(w.rig, { pz: K.hero.pz, py: K.hero.py, duration: 3.2, ease: 'expo.out' });
       }
