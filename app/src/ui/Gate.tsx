@@ -5,7 +5,7 @@ import { LogoMark } from '../components/Logo';
 export type Mode = 'full' | 'lite';
 
 /** Portal de entrada: carrega o mundo e deixa o visitante escolher a experiência. */
-export function Gate({ progress, ready, suggestLite, onEnter }: { progress: number; ready: boolean; suggestLite: boolean; onEnter: (m: Mode) => void }) {
+export function Gate({ progress, ready, suggestLite, onEnter }: { progress: number; ready: boolean; suggestLite: boolean; onEnter: (m: Mode, sound: boolean) => void }) {
   const root = useRef<HTMLDivElement>(null);
   const pct = Math.round(progress * 100);
 
@@ -15,9 +15,9 @@ export function Gate({ progress, ready, suggestLite, onEnter }: { progress: numb
     root.current!.querySelector<HTMLButtonElement>(suggestLite ? '.gate__lite' : '.gate__enter')?.focus({ preventScroll: true });
   }, [ready, suggestLite]);
 
-  const enter = (m: Mode) => {
+  const enter = (m: Mode, sound = false) => {
     gsap
-      .timeline({ onComplete: () => onEnter(m) })
+      .timeline({ onComplete: () => onEnter(m, sound) })
       .to(root.current!.querySelectorAll('.gate__inner > *'), { autoAlpha: 0, y: -12, stagger: 0.04, duration: 0.4, ease: 'power2.in' })
       .to(root.current, { clipPath: 'inset(0% 0% 100% 0%)', duration: 0.9, ease: 'expo.inOut' }, '-=0.1');
   };
@@ -38,11 +38,14 @@ export function Gate({ progress, ready, suggestLite, onEnter }: { progress: numb
           </div>
         ) : (
           <div className="gate__actions">
-            <button className="gate__enter" onClick={() => enter('full')} data-cursor>
-              Entrar
+            <button className="gate__enter" onClick={() => enter('full', true)} data-cursor>
+              <span className="eq" aria-hidden="true"><i /><i /><i /></span> Entrar com som
+            </button>
+            <button className="gate__nosound" onClick={() => enter('full', false)} data-cursor>
+              Entrar sem som
             </button>
             <button className="gate__lite" onClick={() => enter('lite')} data-cursor>
-              ou ver a versão leve, sem animações
+              versão leve, sem animações
             </button>
             {suggestLite && <p className="gate__hint">Seu sistema pede movimento reduzido. A escolha é sua.</p>}
           </div>

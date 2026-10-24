@@ -4,7 +4,7 @@ import { Brand, Arrow, GitHubIcon } from '../components/Logo';
 import { profile, projects, type Project } from '../data/content';
 import { CHAPTERS } from './Chapters';
 
-export function Hud({ chapter, progress, onNav }: { chapter: number; progress: number; onNav: (id: string) => void }) {
+export function Hud({ chapter, progress, onNav, sound, onSound }: { chapter: number; progress: number; onNav: (id: string) => void; sound: boolean; onSound: () => void }) {
   const go = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
     onNav(id);
@@ -22,12 +22,18 @@ export function Hud({ chapter, progress, onNav }: { chapter: number; progress: n
           <a href={profile.github} target="_blank" rel="noopener noreferrer" data-cursor>GitHub</a>
         </nav>
       </header>
-      <div className="hud hud--bottom mono" aria-hidden="true">
+      <div className="hud hud--bottom mono">
         <span className="hud__chapter">
           <b>{String(chapter + 1).padStart(2, '0')}</b> <span key={chapter} className="hud__flip">{CHAPTERS[chapter].label}</span>
         </span>
         <span className="hud__right">
-                    <span>{Math.round(progress * 100)}%</span>
+          <button className="hud__btn" onClick={() => window.dispatchEvent(new Event('sd:terminal'))} data-cursor title="Atalho: tecla /">
+            Terminal <kbd>/</kbd>
+          </button>
+          <button className={`hud__btn hud__sound${sound ? ' is-on' : ''}`} onClick={onSound} aria-pressed={sound} data-cursor>
+            <span className="eq" aria-hidden="true"><i /><i /><i /></span> {sound ? 'Som ligado' : 'Som desligado'}
+          </button>
+          <span>{Math.round(progress * 100)}%</span>
         </span>
       </div>
       <div className="hud__rail" aria-hidden="true">
@@ -79,7 +85,8 @@ export function Cursor() {
 export function ProjectPanel({ index, images, onClose }: { index: number | null; images: string[]; onClose: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   const [shown, setShown] = useState<number | null>(index);
-  const p: Project | null = shown !== null ? projects[shown] : null;
+  const cur = index ?? shown;
+  const p: Project | null = cur !== null ? projects[cur] : null;
 
   useEffect(() => {
     const el = root.current!;
@@ -129,7 +136,7 @@ export function ProjectPanel({ index, images, onClose }: { index: number | null;
             <h3 className="panel__title" id="panel-title">
               {p.name}
             </h3>
-            <img className="panel__img" src={images[shown!]} alt={p.preview.kind === 'image' ? p.preview.alt : `Ilustração de ${p.name}`} />
+            <img className="panel__img" src={images[cur!]} alt={p.preview.kind === 'image' ? p.preview.alt : `Ilustração de ${p.name}`} />
             <p className="panel__summary">{p.summary}</p>
             <div className="panel__ps">
               <div>

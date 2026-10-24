@@ -43,7 +43,7 @@ export const LOGOS: Record<'silvadev' | 'monolinha' | 'monograma' | 'minusculas'
 };
 
 export const LOGO = LOGOS.silvadev;
-export const TONES: Record<Tone, string> = { white: '#F4F5FA', purple: '#8B5CF6', cyan: '#55D6FF' };
+export const TONES: Record<Tone, string> = { white: '#EEF0F6', purple: '#A596F2', cyan: '#8FD3DF' };
 
 /** Converte para coordenadas do mundo: centralizado em x, base (y=54) em 0. */
 export function toWorld(x: number, y: number, scale: number) {

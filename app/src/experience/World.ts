@@ -29,9 +29,10 @@ export interface Rig {
 
 export type Quality = 'high' | 'low';
 
-const PURPLE = new THREE.Color('#8B5CF6');
-const CYAN = new THREE.Color('#55D6FF');
-const FOGS = ['#06070b', '#0a0816', '#071015', '#130a24', '#06060a'].map((c) => new THREE.Color(c));
+const PURPLE = new THREE.Color('#9d8cf0');
+const CYAN = new THREE.Color('#8fd3df');
+// Paleta noturna e calma: azul-ardósia com toques de lavanda.
+const FOGS = ['#0a0d14', '#0c1019', '#0b1318', '#13132a', '#0a0c12'].map((c) => new THREE.Color(c));
 
 export const CORE_Z = -400;
 export const SLOTS = Array.from({ length: 5 }, (_, i) => {
@@ -93,12 +94,13 @@ export class World {
     this.high = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.high ? 1.5 : 1));
+    this.renderer.debug.checkShaderErrors = import.meta.env.DEV;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.scene.fog = this.fog;
-    this.scene.background = new THREE.Color('#06070b');
+    this.scene.background = new THREE.Color('#0a0d14');
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environment = env;
@@ -131,7 +133,7 @@ export class World {
             }`,
         }),
       );
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.5, 0.5, 0.5);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.38, 0.6, 0.55);
       this.composer.addPass(this.bloom);
     }
     this.finalPass = new ShaderPass({
@@ -162,7 +164,7 @@ export class World {
           col.b = texture2D(tDiffuse, uv - dir * ab).b;
           col += g * 0.12 * vec3(0.55, 0.36, 0.96) * step(0.96, rand(vec2(floor(uv.y * 160.0), floor(uTime * 30.0))));
           col *= smoothstep(1.1, 0.32, d);
-          col += (rand(uv * uRes + fract(uTime)) - 0.5) * 0.05;
+          col += (rand(uv * uRes + fract(uTime)) - 0.5) * 0.028;
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -277,7 +279,7 @@ export class World {
     // Metal polido: prata no S, roxo anodizado no D.
     const glass = (tone: 'white' | 'purple') =>
       new THREE.MeshPhysicalMaterial({
-        color: tone === 'white' ? '#e9ebf3' : '#7b4ff0',
+        color: tone === 'white' ? '#e6e9f2' : '#8f80e6',
         metalness: 1,
         roughness: tone === 'white' ? 0.16 : 0.22,
         clearcoat: 1,
@@ -814,8 +816,8 @@ export class World {
     (this.particleMat.uniforms.uPointer.value as THREE.Vector2).copy(p);
 
     this.finalPass.uniforms.uTime.value = t;
-    this.finalPass.uniforms.uGlitch.value = s.glitch;
-    if (this.bloom) this.bloom.strength = 0.5 + s.glitch * 0.8;
+    this.finalPass.uniforms.uGlitch.value = s.glitch * 0.35;
+    if (this.bloom) this.bloom.strength = 0.38 + s.glitch * 0.4;
 
     // o espelho só é renderizado enquanto está perto da câmera
     if (this.reflector) this.reflector.visible = s.pz > -175;

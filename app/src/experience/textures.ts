@@ -37,7 +37,7 @@ export function erpTexture() {
   g.font = '600 22px Montserrat, sans-serif';
   g.fillStyle = '#F4F5FA';
   g.fillText('Belaways', 34, 58);
-  g.fillStyle = '#8B5CF6';
+  g.fillStyle = '#A596F2';
   g.fillText('·', 136, 58);
   g.font = '500 13px "JetBrains Mono", monospace';
   g.fillStyle = '#969BAA';
@@ -45,7 +45,7 @@ export function erpTexture() {
   const items = ['Dashboard', 'Produtos', 'Alertas', 'Pedidos', 'Logística'];
   items.forEach((s, i) => {
     if (i === 0) {
-      g.fillStyle = 'rgba(139,92,246,.18)';
+      g.fillStyle = 'rgba(165,150,242,.18)';
       rr(g, 22, 136, 206, 42, 10);
       g.fill();
     }
@@ -79,7 +79,7 @@ export function erpTexture() {
     g.font = '500 16px Manrope, sans-serif';
     g.fillStyle = '#969BAA';
     g.fillText(s, x + 22, 152);
-    g.fillStyle = i === 0 ? '#8B5CF6' : 'rgba(244,245,250,.18)';
+    g.fillStyle = i === 0 ? '#A596F2' : 'rgba(244,245,250,.18)';
     rr(g, x + 22, 226, [150, 110, 70, 130][i], 10, 5);
     g.fill();
   });
@@ -91,7 +91,7 @@ export function erpTexture() {
   g.fillStyle = '#969BAA';
   g.fillText('Indicadores', 314, 334);
   g.lineWidth = 4;
-  g.strokeStyle = '#8B5CF6';
+  g.strokeStyle = '#A596F2';
   g.beginPath();
   g.moveTo(320, 700);
   g.bezierCurveTo(440, 680, 500, 560, 600, 580);
@@ -112,7 +112,7 @@ export function erpTexture() {
   g.fillStyle = '#969BAA';
   g.fillText('Papéis', 1044, 334);
   ['admin', 'manager', 'operator', 'viewer'].forEach((s, i) => {
-    g.strokeStyle = i === 0 ? '#8B5CF6' : 'rgba(244,245,250,.12)';
+    g.strokeStyle = i === 0 ? '#A596F2' : 'rgba(244,245,250,.12)';
     g.lineWidth = 1.5;
     rr(g, 1044, 360 + i * 64, 172, 46, 8);
     g.stroke();
@@ -152,7 +152,7 @@ export function terminalTexture() {
   g.font = '500 26px "JetBrains Mono", monospace';
   routes.forEach(([m, r, a], i) => {
     const y = 120 + i * 50;
-    g.fillStyle = m === 'GET' ? '#55D6FF' : '#8B5CF6';
+    g.fillStyle = m === 'GET' ? '#8FD3DF' : '#A596F2';
     g.fillText(m, 56, y);
     g.fillStyle = '#F4F5FA';
     g.fillText(r, 210, y);
@@ -166,11 +166,11 @@ export function terminalTexture() {
   g.moveTo(56, 538);
   g.lineTo(W - 56, 538);
   g.stroke();
-  g.fillStyle = '#8B5CF6';
+  g.fillStyle = '#A596F2';
   g.fillText('$', 56, 600);
   g.fillStyle = '#F4F5FA';
   g.fillText('npm test', 210, 600);
-  g.fillStyle = '#55D6FF';
+  g.fillStyle = '#8FD3DF';
   g.fillText('✓', 56, 652);
   g.fillStyle = '#F4F5FA';
   g.fillText('9 testes de integração com node:test', 210, 652);
@@ -189,7 +189,7 @@ export function numberTexture(n: string) {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.lineWidth = 3;
-  g.strokeStyle = 'rgba(139,92,246,.9)';
+  g.strokeStyle = 'rgba(165,150,242,.9)';
   g.strokeText(n, 256, 270);
   return finish(c);
 }

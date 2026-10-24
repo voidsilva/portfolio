@@ -7,6 +7,8 @@ import { erpTexture, terminalTexture } from './experience/textures';
 import { Gate, type Mode } from './ui/Gate';
 import { Chapters, CHAPTERS } from './ui/Chapters';
 import { Cursor, Hud, ProjectPanel } from './ui/Hud';
+import { Terminal } from './ui/Terminal';
+import { Ambient } from './experience/Ambient';
 import { projects } from './data/content';
 
 type Phase = 'loading' | 'gate' | 'in';
@@ -39,6 +41,8 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [panel, setPanel] = useState<number | null>(null);
   const [webgl] = useState(hasWebGL);
+  const ambient = useRef<Ambient | null>(null);
+  const [sound, setSound] = useState(false);
 
   /* ---------- carregamento ---------- */
   useEffect(() => {
@@ -108,7 +112,12 @@ export default function App() {
   }, [webgl]);
 
   /* ---------- entrada ---------- */
-  const enter = useCallback((m: Mode) => {
+  const enter = useCallback((m: Mode, withSound: boolean) => {
+    if (withSound) {
+      ambient.current ??= new Ambient();
+      ambient.current.start();
+      setSound(true);
+    }
     setMode(m);
     setPhase('in');
     document.documentElement.classList.remove('locked');
@@ -135,7 +144,10 @@ export default function App() {
 
     const l = new Lenis({ lerp: 0.085, wheelMultiplier: 0.9 });
     lenis.current = l;
-    l.on('scroll', ScrollTrigger.update);
+    l.on('scroll', (e: Lenis) => {
+      ScrollTrigger.update();
+      ambient.current?.push(Math.abs(e.velocity) / 80);
+    });
     const tick = (t: number) => l.raf(t * 1000);
     gsap.ticker.add(tick);
     gsap.ticker.lagSmoothing(0);
@@ -238,6 +250,7 @@ export default function App() {
       if (frame++ % 2) return;
       const over = (e.target as HTMLElement).closest('a, button, .panel');
       const idx = chapter === 2 && !over ? w.pick(e.clientX, e.clientY) : -1;
+      if (idx >= 0 && idx !== w.hovered) ambient.current?.bell(76 + idx * 2, 0.06);
       w.hovered = idx;
       document.documentElement.toggleAttribute('data-open', idx >= 0);
     };
@@ -256,8 +269,23 @@ export default function App() {
     };
   }, [phase, mode, chapter]);
 
+  // trilha: cada capítulo tem seus acordes
+  useEffect(() => {
+    ambient.current?.setChapter(chapter);
+  }, [chapter]);
+  useEffect(() => () => ambient.current?.dispose(), []);
+
+  const toggleSound = useCallback(() => {
+    ambient.current ??= new Ambient();
+    const on = ambient.current.toggle();
+    if (on) ambient.current.setChapter(chapter, true);
+    setSound(on);
+    return on;
+  }, [chapter]);
+
   // painel aberto: pausa o scroll suave
   useEffect(() => {
+    if (panel !== null) ambient.current?.bell(84, 0.05);
     if (panel === null) lenis.current?.start();
     else lenis.current?.stop();
   }, [panel]);
@@ -276,8 +304,9 @@ export default function App() {
       {phase !== 'in' && <Gate progress={load} ready={phase === 'gate'} suggestLite={systemReduced()} onEnter={enter} />}
       {phase === 'in' && (
         <>
-          <Hud chapter={chapter} progress={progress} onNav={nav} />
+          <Hud chapter={chapter} progress={progress} onNav={nav} sound={sound} onSound={toggleSound} />
           <Cursor />
+          <Terminal onNav={nav} onOpen={setPanel} onSound={toggleSound} />
         </>
       )}
       <Chapters onOpen={setPanel} images={images} />
