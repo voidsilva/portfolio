@@ -37,3 +37,9 @@ app/src/
 - Navegação por teclado, foco visível e link para pular direto aos projetos.
 
 A página "em breve" anterior está guardada em `legacy/`.
+
+## Créditos dos assets
+
+Modelos e céu da cena de abertura vêm do [Poly Haven](https://polyhaven.com), com licença CC0:
+- Classic Laptop e Lantern 01 (modelos)
+- Lakeside Night, por Greg Zaal e Jarod Guest (HDRI)

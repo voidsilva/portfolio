@@ -6,6 +6,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { LOGO, sampleLogo, toWorld } from './logoShape';
 import { haloTexture, numberTexture } from './textures';
 
@@ -29,6 +31,30 @@ export interface Rig {
 
 export type Quality = 'high' | 'low';
 
+export interface WorldAssets {
+  hdr?: THREE.DataTexture;
+  laptop?: THREE.Object3D;
+  lantern?: THREE.Object3D;
+}
+
+/** Carrega os modelos e o céu (CC0, Poly Haven) reportando o progresso. */
+export async function loadAssets(onProgress: (k: number) => void): Promise<WorldAssets> {
+  const parts = [0, 0, 0];
+  const tick = (i: number) => (e: ProgressEvent) => {
+    if (e.total) parts[i] = e.loaded / e.total;
+    onProgress((parts[0] + parts[1] + parts[2]) / 3);
+  };
+  const gltf = new GLTFLoader();
+  const safe = <T,>(p: Promise<T>) => p.catch(() => undefined);
+  const [hdr, laptop, lantern] = await Promise.all([
+    safe(new RGBELoader().loadAsync('/hdri/lakeside_night_1k.hdr', tick(0))),
+    safe(gltf.loadAsync('/models/classic_laptop/model.gltf', tick(1)).then((g) => g.scene)),
+    safe(gltf.loadAsync('/models/Lantern_01/model.gltf', tick(2)).then((g) => g.scene)),
+  ]);
+  onProgress(1);
+  return { hdr: hdr as THREE.DataTexture | undefined, laptop, lantern };
+}
+
 const PURPLE = new THREE.Color('#9d8cf0');
 const CYAN = new THREE.Color('#8fd3df');
 // Paleta noturna e calma: azul-ardósia com toques de lavanda.
@@ -42,7 +68,7 @@ export const SLOTS = Array.from({ length: 5 }, (_, i) => {
 });
 
 export const KEYS: Record<string, Rig> = {
-  hero: { px: -4.2, py: 3.4, pz: 27, lx: -4.6, ly: 4.8, lz: 0, roll: 0, fog: 0, glitch: 0, morph: 0, energy: 1 },
+  hero: { px: -2.6, py: 2.4, pz: 9.5, lx: -2.9, ly: 1.5, lz: 0, roll: 0, fog: 0, glitch: 0, morph: 0, energy: 1 },
   over: { px: 0, py: 13.5, pz: -8, lx: 0, ly: 4, lz: -48, roll: 0, fog: 0.6, glitch: 0, morph: 0, energy: 1 },
   corridor: { px: 0, py: 3.2, pz: -150, lx: 0, ly: 3.4, lz: -200, roll: 0.04, fog: 1, glitch: 0, morph: 0, energy: 1.2 },
   ...Object.fromEntries(
@@ -93,7 +119,7 @@ export class World {
   introStart: () => void = () => {};
   introSkip: () => void = () => {};
 
-  constructor(canvas: HTMLCanvasElement, quality: Quality, private screenTextures: THREE.Texture[]) {
+  constructor(canvas: HTMLCanvasElement, quality: Quality, private screenTextures: THREE.Texture[], private assets?: WorldAssets) {
     this.high = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.high ? 1.5 : 1));
@@ -101,6 +127,8 @@ export class World {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.enabled = this.high;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene.fog = this.fog;
     this.scene.background = new THREE.Color('#0a0d14');
@@ -334,105 +362,240 @@ export class World {
   }
 
   /**
-   * A peça central: um astrolábio de metal polido. Quatro anéis com marcações
-   * gravadas giram em eixos diferentes ao redor de um núcleo de vidro aceso.
+   * A cena de abertura: um dev programando de madrugada à beira do lago.
+   * Pedra na margem, notebook aberto com os projetos na tela, lanterna acesa
+   * e vaga-lumes, sob o céu fotográfico de uma noite real (HDRI CC0).
    */
   private buildMonolith() {
     this.buildSky();
+    const A = this.assets;
     const group = new THREE.Group();
-    group.position.set(0, 5.2, 0);
-    group.scale.setScalar(1.25);
-
-    const metal = (color: string, rough: number) =>
-      new THREE.MeshPhysicalMaterial({ color, metalness: 1, roughness: rough, clearcoat: 0.6, clearcoatRoughness: 0.15, envMapIntensity: 1.5 });
-    const silver = metal('#d9dce6', 0.18);
-    const champagne = metal('#d8c7a6', 0.24);
-    const lavender = metal('#a99be8', 0.26);
-    const graphite = metal('#3a3e4c', 0.35);
-
-    const rings: { pivot: THREE.Group; axis: THREE.Vector3; speed: number; base: THREE.Euler }[] = [];
-    const defs: [number, number, THREE.Material, [number, number, number], number][] = [
-      [3.4, 0.11, silver, [0, 0, 0], 0.18],
-      [2.85, 0.09, champagne, [Math.PI / 2, 0, 0], -0.26],
-      [2.35, 0.085, lavender, [0, Math.PI / 2, 0.4], 0.34],
-      [1.85, 0.07, silver, [0.9, 0.3, 0], -0.45],
-    ];
-    defs.forEach(([R, tube, mat, rot, speed], i) => {
-      const pivot = new THREE.Group();
-      pivot.rotation.set(...rot);
-      // anel principal com seção chata (fita), mais elegante que um tubo redondo
-      const shape = new THREE.Shape();
-      shape.absarc(0, 0, R + tube, 0, Math.PI * 2, false);
-      const hole = new THREE.Path();
-      hole.absarc(0, 0, R - tube, 0, Math.PI * 2, true);
-      shape.holes.push(hole);
-      const band = new THREE.ExtrudeGeometry(shape, { depth: tube * 1.6, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 3, curveSegments: 160 });
-      band.translate(0, 0, -tube * 0.8);
-      pivot.add(new THREE.Mesh(band, mat));
-      // marcações gravadas na face
-      const ticks = i === 0 ? 120 : i === 1 ? 72 : 48;
-      const tick = new THREE.InstancedMesh(new THREE.BoxGeometry(0.012, tube * 0.9, 0.02), graphite, ticks);
-      const m4 = new THREE.Matrix4();
-      for (let k = 0; k < ticks; k++) {
-        const a = (k / ticks) * Math.PI * 2;
-        const long = k % (ticks / 12) === 0 ? 1.6 : 1;
-        m4.compose(
-          new THREE.Vector3(Math.cos(a) * R, Math.sin(a) * R, tube * 0.82 + 0.01),
-          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), a - Math.PI / 2),
-          new THREE.Vector3(1, long, 1),
-        );
-        tick.setMatrixAt(k, m4);
-      }
-      pivot.add(tick);
-      // pinos de articulação nos eixos
-      [-1, 1].forEach((s) => {
-        const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.36, 24), champagne);
-        pin.rotation.z = Math.PI / 2;
-        pin.position.set(s * R, 0, 0);
-        pivot.add(pin);
-      });
-      group.add(pivot);
-      const axis = new THREE.Vector3(i % 2 ? 1 : 0, i % 2 ? 0 : 1, i === 2 ? 1 : 0).normalize();
-      rings.push({ pivot, axis, speed, base: pivot.rotation.clone() });
-    });
-
-    // núcleo: esfera de vidro com uma luz lavanda e um ponto ciano dentro
-    const shell = new THREE.Mesh(
-      new THREE.SphereGeometry(1.05, 64, 48),
-      this.high
-        ? new THREE.MeshPhysicalMaterial({ color: '#e8e6ff', metalness: 0, roughness: 0.04, transmission: 1, thickness: 1.2, ior: 1.5, iridescence: 0.35, clearcoat: 1, envMapIntensity: 1.2 })
-        : new THREE.MeshStandardMaterial({ color: '#2a2a40', metalness: 0.4, roughness: 0.1, transparent: true, opacity: 0.4 }),
-    );
-    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 4), new THREE.MeshBasicMaterial({ color: PURPLE.clone().multiplyScalar(1.6), toneMapped: false }));
-    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.12, 24, 16), new THREE.MeshBasicMaterial({ color: CYAN.clone().multiplyScalar(2), toneMapped: false }));
-    const coreLight = new THREE.PointLight(PURPLE, 26, 12, 1.6);
-    group.add(shell, core, spark, coreLight);
-
-    // luzes de estúdio para o metal
-    const key = new THREE.DirectionalLight('#f2eeff', 2.2);
-    key.position.set(-6, 10, 8);
-    const rim = new THREE.PointLight(CYAN, 30, 24, 1.6);
-    rim.position.set(6, 6, -6);
-    const fill = new THREE.PointLight('#b8a8ff', 24, 26, 1.6);
-    fill.position.set(7, 3, 9);
-    this.scene.add(key, rim, fill);
     this.scene.add(group);
 
-    // Introdução: os anéis chegam girando e se encaixam; o núcleo acende.
+    // Céu fotográfico: domo com a HDRI, que some quando a câmera sai da margem.
+    let dome: THREE.Mesh | null = null;
+    if (A?.hdr) {
+      const tex = A.hdr;
+      const pm = new THREE.PMREMGenerator(this.renderer);
+      const env = pm.fromEquirectangular(tex).texture;
+      this.scene.environment = env;
+      this.scene.environmentIntensity = 0.35;
+      this.disposables.push(pm, env);
+      // domo com a foto acima do horizonte; abaixo dele, a cor da névoa (emenda com o lago)
+      const domeMat = new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        depthWrite: false,
+        transparent: true,
+        fog: false,
+        uniforms: { tMap: { value: tex }, uTint: { value: new THREE.Color(0.085, 0.095, 0.18) }, uFog: { value: new THREE.Color() }, opacity: { value: 1 }, uRot: { value: 0 } },
+        vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
+        fragmentShader: /* glsl */ `
+          uniform sampler2D tMap; uniform vec3 uTint; uniform vec3 uFog; uniform float opacity; uniform float uRot; varying vec3 vDir;
+          void main(){
+            vec3 d = normalize(vDir);
+            float a = atan(d.z, d.x) + uRot;
+            vec2 uv = vec2(fract(a / 6.28318 + 0.5), acos(clamp(d.y, -1.0, 1.0)) / 3.14159);
+            vec3 col = texture2D(tMap, vec2(uv.x, 1.0 - uv.y)).rgb * uTint;
+            col = mix(uFog, col, smoothstep(-0.01, 0.06, d.y));
+            gl_FragColor = vec4(col, opacity);
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
+          }`,
+      });
+      dome = new THREE.Mesh(new THREE.SphereGeometry(180, 64, 32), domeMat);
+      dome.renderOrder = 0;
+      dome.frustumCulled = false;
+      this.scene.add(dome);
+      // a névoa da margem usa a cor média do horizonte da foto
+      const img = tex.image as unknown as { data: Uint16Array | Float32Array; width: number; height: number };
+      const row = Math.floor(img.height * 0.5);
+      const acc = [0, 0, 0];
+      const half = img.data instanceof Uint16Array;
+      for (let x = 0; x < img.width; x += 4) {
+        const i = (row * img.width + x) * 4;
+        for (let c = 0; c < 3; c++) acc[c] += half ? THREE.DataUtils.fromHalfFloat(img.data[i + c]) : (img.data[i + c] as number);
+      }
+      const n = img.width / 4;
+      const h = acc.map((v, c) => (v / n) * [0.085, 0.095, 0.18][c]);
+      FOGS[0].setRGB(Math.max(0, (h[0] - HORIZON_TINT.r) / 1.6), Math.max(0, (h[1] - HORIZON_TINT.g) / 1.6), Math.max(0, (h[2] - HORIZON_TINT.b) / 1.6), THREE.LinearSRGBColorSpace);
+    }
+
+    // A pedra da margem: rocha procedural, achatada em cima, metade dentro d'água.
+    const rockGeo = new THREE.IcosahedronGeometry(1, 6);
+    const p = rockGeo.getAttribute('position');
+    const v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      const nz = Math.sin(v.x * 3.1 + v.z * 1.7) * 0.08 + Math.sin(v.y * 5.3 + v.x * 2.9) * 0.05 + Math.sin(v.z * 9.1 + v.y * 7.7) * 0.025;
+      v.multiplyScalar(1 + nz);
+      if (v.y > 0.35) v.y = 0.35 + (v.y - 0.35) * 0.18; // topo plano onde o notebook fica
+      p.setXYZ(i, v.x * 2.4, v.y * 1.6, v.z * 1.7);
+    }
+    rockGeo.computeVertexNormals();
+    // variação de cor (musgo e manchas) para a pedra não parecer plástica
+    const col = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      const k = 0.75 + 0.25 * Math.sin(v.x * 4.7 + v.z * 3.3) * Math.sin(v.y * 6.1 + v.x * 1.3) + (Math.random() - 0.5) * 0.12;
+      const moss = THREE.MathUtils.smoothstep(v.y, -0.2, 0.25) * 0.12;
+      col.set([k - moss * 0.5, k + moss * 0.2, k - moss * 0.3], i * 3);
+    }
+    rockGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const rock = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({ color: '#2f3038', roughness: 0.95, metalness: 0.0, vertexColors: true }));
+    rock.position.set(0, 0.15, 0);
+    rock.castShadow = true;
+    rock.receiveShadow = true;
+    group.add(rock);
+    const top = 0.15 + 0.35 * 1.6 + 0.02;
+    // pedras menores ao redor
+    [[-2.6, 0.9, 0.6], [2.4, 1.6, 0.45], [-1.2, -1.9, 0.35], [3.4, -0.8, 0.3]].forEach(([x, z, s]) => {
+      const m = new THREE.Mesh(rockGeo, rock.material);
+      m.scale.setScalar(s);
+      m.position.set(x, 0.05, z);
+      m.rotation.y = x * 2;
+      m.receiveShadow = true;
+      group.add(m);
+    });
+
+    // Notebook aberto com os projetos passando na tela.
+    let screenMat: THREE.MeshBasicMaterial | null = null;
+    if (A?.laptop) {
+      const lap = A.laptop;
+      const box = new THREE.Box3().setFromObject(lap);
+      const size = box.getSize(new THREE.Vector3());
+      const s = 1.7 / Math.max(size.x, size.z);
+      lap.scale.setScalar(s);
+      lap.position.set(-0.35, top - box.min.y * s, 0.1);
+      lap.rotation.y = 0.35;
+      lap.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.castShadow = true;
+        m.receiveShadow = true;
+        const mat = m.material as THREE.MeshStandardMaterial;
+        if (mat.name === 'classic_laptop_screen') {
+          // a tela do modelo não tem UV útil: projeta coordenadas no plano da tela
+          const g = m.geometry;
+          const pos = g.getAttribute('position');
+          const nrm = g.getAttribute('normal');
+          const nAvg = new THREE.Vector3();
+          for (let i = 0; i < nrm.count; i++) nAvg.add(new THREE.Vector3().fromBufferAttribute(nrm, i));
+          nAvg.normalize();
+          const vAx = new THREE.Vector3(0, 1, 0).projectOnPlane(nAvg).normalize();
+          const uAx = new THREE.Vector3().crossVectors(vAx, nAvg).normalize();
+          const uv = new Float32Array(pos.count * 2);
+          let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+          const q = new THREE.Vector3();
+          for (let i = 0; i < pos.count; i++) {
+            q.fromBufferAttribute(pos, i);
+            const uu = q.dot(uAx), vv = q.dot(vAx);
+            uv[i * 2] = uu;
+            uv[i * 2 + 1] = vv;
+            u0 = Math.min(u0, uu); u1 = Math.max(u1, uu); v0 = Math.min(v0, vv); v1 = Math.max(v1, vv);
+          }
+          for (let i = 0; i < pos.count; i++) {
+            uv[i * 2] = 1 - (uv[i * 2] - u0) / (u1 - u0);
+            uv[i * 2 + 1] = (uv[i * 2 + 1] - v0) / (v1 - v0);
+          }
+          g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+          screenMat = new THREE.MeshBasicMaterial({ map: this.screenTextures[0], toneMapped: false, color: new THREE.Color(0.85, 0.85, 0.9), side: THREE.DoubleSide });
+          m.material = screenMat;
+        } else if (mat.envMapIntensity !== undefined) mat.envMapIntensity = 1.4;
+      });
+      group.add(lap);
+      const glow = new THREE.PointLight('#b9b3ff', 3, 4, 2);
+      glow.position.set(-0.2, top + 0.8, 0.9);
+      group.add(glow);
+    }
+
+    // Lanterna com luz quente que tremula e projeta sombras.
+    const lanternLight = new THREE.PointLight('#ffb36b', 0, 14, 1.6);
+    let flame: THREE.Mesh | null = null;
+    if (A?.lantern) {
+      const lan = A.lantern;
+      const box = new THREE.Box3().setFromObject(lan);
+      const size = box.getSize(new THREE.Vector3());
+      const s = 1.15 / size.y;
+      lan.scale.setScalar(s);
+      lan.position.set(1.25, top - box.min.y * s, -0.25);
+      lan.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.castShadow = true;
+        const mat = m.material as THREE.MeshStandardMaterial;
+        if (mat.name === 'Lantern_01_glass') {
+          m.castShadow = false;
+          m.material = new THREE.MeshPhysicalMaterial({ color: '#ffe2b8', roughness: 0.15, transmission: 0.85, thickness: 0.05, emissive: '#ff9a4a', emissiveIntensity: 0.35, transparent: true, opacity: 0.6 });
+        } else if (mat.envMapIntensity !== undefined) mat.envMapIntensity = 1.5;
+      });
+      group.add(lan);
+      flame = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.8, 0.8), toneMapped: false }));
+      flame.scale.y = 1.6;
+      flame.position.set(1.25, top + 0.45, -0.25);
+      group.add(flame);
+      lanternLight.position.set(1.25, top + 0.5, -0.25);
+    }
+    if (this.high) {
+      lanternLight.castShadow = true;
+      lanternLight.shadow.mapSize.set(1024, 1024);
+      lanternLight.shadow.bias = -0.002;
+      lanternLight.shadow.radius = 4;
+    }
+    group.add(lanternLight);
+
+    // luar suave vindo de trás, para recortar as silhuetas
+    const moon = new THREE.DirectionalLight('#b8c4ff', 0.7);
+    moon.position.set(-8, 10, -12);
+    this.scene.add(moon);
+
+    // Vaga-lumes.
+    const N = this.high ? 140 : 60;
+    const fp = new Float32Array(N * 3);
+    const fr = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      fp.set([(Math.random() - 0.5) * 18, 0.4 + Math.random() * 3.5, (Math.random() - 0.5) * 12 - 1], i * 3);
+      fr[i] = Math.random();
+    }
+    const fg = new THREE.BufferGeometry();
+    fg.setAttribute('position', new THREE.BufferAttribute(fp, 3));
+    fg.setAttribute('aR', new THREE.BufferAttribute(fr, 1));
+    const fmat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uPixel: { value: 1 }, uI: { value: 0 } },
+      vertexShader: /* glsl */ `
+        uniform float uTime; uniform float uPixel; attribute float aR; varying float vA;
+        void main(){
+          vec3 p = position;
+          float t = uTime * (0.25 + aR * 0.35) + aR * 60.0;
+          p += vec3(sin(t) * 0.8, sin(t * 1.7) * 0.35, cos(t * 0.8) * 0.8);
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          gl_Position = projectionMatrix * mv;
+          gl_PointSize = (2.0 + aR * 2.5) * uPixel * 18.0 / -mv.z;
+          vA = pow(0.5 + 0.5 * sin(uTime * (1.2 + aR * 2.0) + aR * 30.0), 3.0);
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform float uI; varying float vA;
+        void main(){
+          float d = length(gl_PointCoord - 0.5);
+          float a = smoothstep(0.5, 0.0, d);
+          gl_FragColor = vec4(vec3(1.0, 0.85, 0.45) * 1.6, a * vA * uI);
+        }`,
+    });
+    const flies = new THREE.Points(fg, fmat);
+    flies.frustumCulled = false;
+    group.add(flies);
+
+    // Introdução: a lanterna acende, a tela liga, os vaga-lumes aparecem.
     let intro = this.reducedIntro ? 1 : 0;
     let playing = false;
     const apply = (k: number) => {
-      rings.forEach((r, i) => {
-        const e = THREE.MathUtils.clamp(k * 1.4 - i * 0.12, 0, 1);
-        const ease = 1 - Math.pow(1 - e, 3);
-        r.pivot.scale.setScalar(Math.max(0.0001, 0.6 + ease * 0.4));
-        r.pivot.visible = e > 0;
-      });
-      const c = THREE.MathUtils.smoothstep(k, 0.55, 1);
-      core.scale.setScalar(Math.max(0.0001, c));
-      spark.scale.setScalar(Math.max(0.0001, c));
-      coreLight.intensity = 26 * c;
-      shell.scale.setScalar(Math.max(0.0001, THREE.MathUtils.smoothstep(k, 0.35, 0.8)));
+      const lamp = THREE.MathUtils.smoothstep(k, 0.1, 0.5);
+      lanternLight.intensity = 22 * lamp;
+      if (flame) flame.scale.setScalar(Math.max(0.0001, lamp)).setY(Math.max(0.0001, lamp * 1.6));
+      if (screenMat) screenMat.color.setScalar(0.85 * THREE.MathUtils.smoothstep(k, 0.45, 0.8));
+      fmat.uniforms.uI.value = THREE.MathUtils.smoothstep(k, 0.6, 1);
     };
     apply(intro);
     this.introStart = () => {
@@ -444,26 +607,34 @@ export class World {
       playing = false;
       apply(1);
     };
-    let spin = 0;
+    let slide = 0;
+    let slideT = 0;
     this.updaters.push((t, dt) => {
       if (playing && intro < 1) {
         intro = Math.min(1, intro + dt / 3);
         apply(intro);
       }
-      // gira mais rápido durante a montagem e quando o mouse se move
-      const boost = 1 + (1 - intro) * 8 + this.pointerCur.length() * 0.6;
-      spin += dt * boost;
-      rings.forEach((r) => {
-        r.pivot.rotation.copy(r.base);
-        r.pivot.rotateOnAxis(r.axis, spin * r.speed);
-      });
-      group.position.y = 5.2 + Math.sin(t * 0.7) * 0.18;
-      group.rotation.y = this.pointerCur.x * 0.35;
-      group.rotation.x = -this.pointerCur.y * 0.2;
-      core.rotation.y = t * 0.4;
-      const pulse = 0.85 + Math.sin(t * 1.6) * 0.15;
-      (core.material as THREE.MeshBasicMaterial).color.copy(PURPLE).multiplyScalar(1.4 * pulse);
-      spark.position.set(Math.cos(t * 0.9) * 0.22, Math.sin(t * 1.3) * 0.18, Math.sin(t * 0.9) * 0.22);
+      if (intro >= 1) {
+        const fl = 1 + Math.sin(t * 9.3) * 0.06 + Math.sin(t * 23.7) * 0.04 + Math.sin(t * 3.1) * 0.05;
+        lanternLight.intensity = 22 * fl;
+        if (flame) flame.scale.set(fl, 1.6 * fl, fl);
+      }
+      // a tela troca de projeto a cada 4 segundos
+      slideT += dt;
+      if (screenMat && slideT > 4) {
+        slideT = 0;
+        slide = (slide + 1) % this.screenTextures.length;
+        screenMat.map = this.screenTextures[slide];
+      }
+      fmat.uniforms.uTime.value = t;
+      fmat.uniforms.uPixel.value = this.renderer.getPixelRatio();
+      if (dome) {
+        dome.position.copy(this.camera.position);
+        const dm = dome.material as THREE.ShaderMaterial;
+        dm.uniforms.opacity.value = 1 - THREE.MathUtils.smoothstep(this.cur.fog, 0.3, 0.95);
+        dm.uniforms.uFog.value.copy(this.fog.color);
+        dome.visible = dm.uniforms.opacity.value > 0.001;
+      }
     });
   }
 

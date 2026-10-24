@@ -47,8 +47,8 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.add('locked');
     let alive = true;
-    const steps = { fonts: 0, three: 0, tex: 0 };
-    const bump = () => alive && setLoad((steps.fonts + steps.three + steps.tex) / 3);
+    const steps = { fonts: 0, three: 0, tex: 0, assets: 0 };
+    const bump = () => alive && setLoad((steps.fonts + steps.three + steps.tex + steps.assets * 3) / 6);
 
     const fonts = Promise.all(
       ['600 40px Montserrat', '800 40px Montserrat', '400 16px Manrope', '500 14px "JetBrains Mono"'].map((f) => document.fonts.load(f).catch(() => null)),
@@ -56,10 +56,15 @@ export default function App() {
       steps.fonts = 1;
       bump();
     });
+    let assets: import('./experience/World').WorldAssets | undefined;
     const mod = webgl
-      ? import('./experience/World').then((m) => {
+      ? import('./experience/World').then(async (m) => {
           steps.three = 1;
           bump();
+          assets = await m.loadAssets((k) => {
+            steps.assets = k;
+            bump();
+          });
           return m;
         })
       : Promise.resolve(null);
@@ -93,8 +98,8 @@ export default function App() {
       const all = [erp, term, ...loaded];
       setImages([(erp.image as HTMLCanvasElement).toDataURL('image/webp', 0.85), (term.image as HTMLCanvasElement).toDataURL('image/webp', 0.85), ...files]);
       if (m && canvas.current) {
-        if (innerWidth < 820) Object.assign(m.KEYS.hero, { px: 0, lx: 0, ly: 3.2 });
-        world.current = new m.World(canvas.current, quality(), all);
+        if (innerWidth < 820) Object.assign(m.KEYS.hero, { px: 0, lx: 0.2, ly: 1.2, pz: 12 });
+        world.current = new m.World(canvas.current, quality(), all, assets);
         if (import.meta.env.DEV) Object.assign(window, { __world: world.current });
         keys.current = m.KEYS;
         world.current.rig.pz = 70;
