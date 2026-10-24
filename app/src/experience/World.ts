@@ -185,7 +185,7 @@ export class World {
         tDiffuse: { value: null },
         uTime: { value: 0 },
         uGlitch: { value: 0 },
-        uAberr: { value: 0.0016 },
+        uAberr: { value: 0.0005 },
         uRes: { value: new THREE.Vector2(1, 1) },
       },
       vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
@@ -392,24 +392,10 @@ export class World {
           float R = 0.036;
           vec2 lp = vec2(dot(d, right), dot(d, up)) / R;
           float r = length(lp);
-          if (m > 0.0) {
-            float limb = sqrt(max(0.0, 1.0 - r * r));
-            float maria = smoothstep(0.42, 0.68, fbm2(lp * 1.6 + 3.0));
-            vec2 cp = lp * 5.0; vec2 ci = floor(cp);
-            float crater = 0.0;
-            for (int k = 0; k < 4; k++){
-              vec2 o = vec2(float(k % 2), float(k / 2));
-              vec2 c = ci + o + vec2(hash(ci + o), hash(ci + o + 7.0)) - 0.5;
-              float cr = 0.12 + hash(ci + o + 3.0) * 0.22;
-              float dd = length(cp - c);
-              crater += (smoothstep(cr, cr * 0.7, dd) * 0.5 - smoothstep(cr * 1.15, cr, dd) * smoothstep(cr * 0.85, cr, dd) * 0.35) * step(0.55, hash(ci + o + 11.0));
-            }
-            vec3 moon = vec3(0.93, 0.93, 0.98) * (0.62 + 0.38 * pow(limb, 0.5)) * (1.0 - maria * 0.45) * (1.0 - crater * 0.4) + fbm2(lp * 9.0) * 0.06;
-            col = mix(col, moon * 0.5, smoothstep(1.0, 0.96, r));
-            float hal = max(r - 1.0, 0.0);
-            col += vec3(0.62, 0.62, 0.85) * exp(-hal * 2.2) * 0.22 * step(1.0, r);
-            col += vec3(0.32, 0.3, 0.55) * exp(-hal * 0.35) * 0.08;
-          }
+          // halo da lua (o disco agora é uma esfera 3D iluminada de lado)
+          float hal = max(r - 1.0, 0.0);
+          col += vec3(0.5, 0.5, 0.75) * exp(-hal * 1.6) * 0.16 * step(1.0, r) * step(0.0, m);
+          col += vec3(0.3, 0.28, 0.52) * exp(-hal * 0.3) * 0.07 * step(0.0, m);
           // montanhas em três camadas, com névoa entre elas e borda iluminada pela lua
           float moonAz = atan(uMoon.z, uMoon.x) + 3.14159;
           float lit = 0.5 + 0.5 * cos(az - moonAz);
@@ -429,17 +415,73 @@ export class World {
           // camada do meio, com borda iluminada
           float inMid = step(y, mid) * fade;
           float rimM = smoothstep(0.006, 0.0, mid - y) * lit;
-          col = mix(col, midCol + vec3(0.12, 0.12, 0.2) * rimM, inMid);
+          col = mix(col, midCol + vec3(0.05, 0.05, 0.09) * rimM, inMid);
           col = mix(col, horizon * 0.8, smoothstep(0.025, 0.0, y) * 0.3 * fade);
           // camada próxima, mais escura e recortada
           float inNear = step(y, near) * fade;
           float rimN = smoothstep(0.004, 0.0, near - y) * lit;
-          col = mix(col, nearCol + vec3(0.1, 0.1, 0.18) * rimN, inNear);
+          col = mix(col, nearCol + vec3(0.04, 0.04, 0.08) * rimN, inNear);
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,
     });
+    // Lua 3D: esfera com mares e crateras em ruído 3D, relevo e luz vindo de lado (fase).
+    const moonMat = new THREE.ShaderMaterial({
+      fog: false,
+      uniforms: { uLight: { value: new THREE.Vector3(-0.49, 0.16, 0.65).normalize() } },
+      vertexShader: /* glsl */ `varying vec3 vN; varying vec3 vO; void main(){ vO = normalize(position); vN = normalize((modelMatrix * vec4(normal, 0.0)).xyz); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uLight; varying vec3 vN; varying vec3 vO;
+        float h3(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        float n3(vec3 p){ vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
+                     mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z); }
+        float fbm(vec3 p){ float v = 0.0; float a = 0.5; for (int i = 0; i < 5; i++){ v += n3(p) * a; p *= 2.1; a *= 0.5; } return v; }
+        // crateras: bacias com borda elevada, em células de várias escalas
+        float craters(vec3 p){
+          float c = 0.0;
+          for (int s = 0; s < 3; s++){
+            float sc = 4.0 * pow(2.2, float(s));
+            vec3 q = p * sc; vec3 i = floor(q);
+            vec3 o = vec3(h3(i), h3(i + 3.1), h3(i + 7.7));
+            float d = length(fract(q) - o);
+            float r = 0.18 + h3(i + 1.3) * 0.22;
+            float bowl = smoothstep(r, 0.0, d);
+            float rim = smoothstep(r * 1.35, r, d) * smoothstep(r * 0.75, r, d);
+            c += (rim * 0.6 - bowl * 0.9) * step(0.45, h3(i + 9.1)) / (1.0 + float(s));
+          }
+          return c;
+        }
+        float height(vec3 p){ return fbm(p * 2.2) * 0.6 + craters(p) * 0.35; }
+        void main(){
+          vec3 p = normalize(vO);
+          // relevo: perturba a normal pelo gradiente da altura
+          float e = 0.01;
+          float h0 = height(p);
+          vec3 g = vec3(height(p + vec3(e,0,0)) - h0, height(p + vec3(0,e,0)) - h0, height(p + vec3(0,0,e)) - h0) / e;
+          vec3 n = normalize(vN - (g - dot(g, vN) * vN) * 0.06);
+          float diff = smoothstep(-0.08, 0.35, dot(n, uLight));
+          float maria = smoothstep(0.45, 0.62, fbm(p * 1.4 + 5.0));
+          vec3 albedo = vec3(0.86, 0.86, 0.9) * (1.0 - maria * 0.4) * (0.85 + h0 * 0.3);
+          vec3 col = albedo * (diff * 0.95 + 0.035);
+          gl_FragColor = vec4(col, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    });
+    const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), moonMat);
+    moonMesh.renderOrder = 1;
+    moonMesh.frustumCulled = false;
+    this.scene.add(moonMesh);
+    const moonDir = (mat.uniforms.uMoon.value as THREE.Vector3).clone();
+    this.updaters.push((t) => {
+      const dist = 150;
+      moonMesh.position.copy(this.camera.position).addScaledVector(moonDir, dist);
+      moonMesh.scale.setScalar(dist * 0.036);
+      moonMesh.rotation.y = 0.6 + t * 0.002;
+    });
+
     const sky = new THREE.Mesh(new THREE.SphereGeometry(200, 48, 24), mat);
     sky.frustumCulled = false;
     sky.renderOrder = -1;
