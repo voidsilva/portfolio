@@ -7,7 +7,8 @@ export type Mode = 'full' | 'lite';
 /** Portal de entrada: carrega o mundo e deixa o visitante escolher a experiência. */
 export function Gate({ progress, ready, suggestLite, onEnter }: { progress: number; ready: boolean; suggestLite: boolean; onEnter: (m: Mode, sound: boolean) => void }) {
   const root = useRef<HTMLDivElement>(null);
-  const pct = Math.round(progress * 100);
+  const k = Math.min(1, Math.max(0, progress));
+  const pct = Math.round(k * 100);
 
   useEffect(() => {
     if (!ready) return;
@@ -32,7 +33,7 @@ export function Gate({ progress, ready, suggestLite, onEnter }: { progress: numb
           <div className="gate__load" aria-live="polite">
             <span>Carregando</span>
             <div className="gate__bar">
-              <i style={{ transform: `scaleX(${progress})` }} />
+              <i style={{ transform: `scaleX(${k})` }} />
             </div>
             <span className="gate__pct">{pct}%</span>
           </div>

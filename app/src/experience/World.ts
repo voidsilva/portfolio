@@ -42,7 +42,8 @@ export interface WorldAssets {
 export async function loadAssets(onProgress: (k: number) => void): Promise<WorldAssets> {
   const parts = [0, 0, 0];
   const tick = (i: number) => (e: ProgressEvent) => {
-    if (e.total) parts[i] = e.loaded / e.total;
+    // o servidor manda o arquivo comprimido: o total informado pode ser menor que o baixado
+    if (e.total) parts[i] = Math.min(1, e.loaded / e.total);
     onProgress((parts[0] + parts[1] + parts[2]) / 3);
   };
   const gltf = new GLTFLoader();
