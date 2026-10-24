@@ -66,7 +66,7 @@ const FOGS = ['#0a0d14', '#0c1019', '#0b1318', '#13132a', '#0a0c12'].map((c) => 
 export const CORE_Z = -400;
 export const SLOTS = Array.from({ length: projects.length }, (_, i) => {
   const x = i % 2 === 0 ? -3.6 : 3.6;
-  return { x, y: 1.9, z: -205 - i * 34, rotY: x < 0 ? 0.32 : -0.32 };
+  return { x, y: 4.3, z: -205 - i * 34, rotY: x < 0 ? 0.32 : -0.32 };
 });
 
 export const KEYS: Record<string, Rig> = {
@@ -76,7 +76,7 @@ export const KEYS: Record<string, Rig> = {
   ...Object.fromEntries(
     SLOTS.map((s, i) => [
       `p${i}`,
-      { px: s.x * 0.3 - 2.2, py: s.y + 1.1, pz: s.z + 10.5, lx: s.x - 2.6, ly: s.y - 0.1, lz: s.z, roll: s.x < 0 ? 0.015 : -0.015, fog: 2, glitch: 0, morph: 0, energy: 1 },
+      { px: s.x * 0.22 - 1.6, py: s.y + 0.4, pz: s.z + 11, lx: s.x - 2.4, ly: s.y + 0.3, lz: s.z, roll: s.x < 0 ? 0.015 : -0.015, fog: 2, glitch: 0, morph: 0, energy: 1 },
     ]),
   ),
   about: { px: 0, py: 6, pz: CORE_Z + 17, lx: -3.6, ly: 6, lz: CORE_Z, roll: 0, fog: 3, glitch: 0, morph: 0, energy: 1 },
@@ -735,79 +735,59 @@ export class World {
     this.disposables.push(geo);
   }
 
-  /** Projetos: cada um é um notebook sobre uma pedra no lago, com o sistema na tela. */
   private buildGallery() {
+    const frameMat = new THREE.MeshStandardMaterial({ color: '#101219', metalness: 0.9, roughness: 0.3, envMapIntensity: 0.4 });
+    const edgeMat = new THREE.LineBasicMaterial({ color: PURPLE, transparent: true, opacity: 0.7 });
     const halo = haloTexture();
     this.disposables.push(halo);
-    const rockGeo = new THREE.IcosahedronGeometry(1, 4);
-    const rp = rockGeo.getAttribute('position');
-    const v = new THREE.Vector3();
-    for (let i = 0; i < rp.count; i++) {
-      v.fromBufferAttribute(rp, i);
-      v.multiplyScalar(1 + Math.sin(v.x * 3.3 + v.z * 2.1) * 0.08 + Math.sin(v.y * 6.1) * 0.04);
-      if (v.y > 0.3) v.y = 0.3 + (v.y - 0.3) * 0.15;
-      rp.setXYZ(i, v.x * 3.4, v.y * 1.4, v.z * 2.4);
-    }
-    rockGeo.computeVertexNormals();
-    const rockMat = new THREE.MeshStandardMaterial({ color: '#34363f', roughness: 0.95 });
-    const top = 0.3 * 1.4 + 0.02;
-
     SLOTS.forEach((slot, i) => {
       const g = new THREE.Group();
-      g.position.set(slot.x, 0, slot.z);
+      g.position.set(slot.x, slot.y, slot.z);
       g.rotation.y = slot.rotY;
-      const rock = new THREE.Mesh(rockGeo, rockMat);
-      rock.position.y = 0.05;
-      g.add(rock);
-
-      let screen: THREE.Mesh | null = null;
-      const src = this.assets?.laptop;
-      if (src) {
-        const lap = src.clone(true);
-        lap.position.set(0, 0, 0);
-        lap.rotation.set(0, 0, 0);
-        lap.scale.setScalar(1);
-        const box = new THREE.Box3().setFromObject(lap);
-        const size = box.getSize(new THREE.Vector3());
-        const s = 3.6 / Math.max(size.x, size.z);
-        lap.scale.setScalar(s);
-        lap.position.set(0, top - box.min.y * s, 0.2);
-        lap.traverse((o) => {
-          const m = o as THREE.Mesh;
-          if (!m.isMesh) return;
-          const mat = m.material as THREE.Material;
-          if (mat.name === 'classic_laptop_screen' || (mat as THREE.MeshBasicMaterial).isMeshBasicMaterial) {
-            m.material = new THREE.MeshBasicMaterial({ map: this.screenTextures[i], toneMapped: false, color: new THREE.Color(0.62, 0.62, 0.68), side: THREE.DoubleSide });
-            m.userData.index = i;
-            screen = m;
-          }
-        });
-        g.add(lap);
-      }
-      if (screen) this.screens.push(screen);
-
-      const light = new THREE.PointLight('#c9c0ff', 8, 9, 1.8);
-      light.position.set(0, top + 1.6, 1.6);
-      g.add(light);
-      const num = new THREE.Mesh(
-        new THREE.PlaneGeometry(7, 7),
-        new THREE.MeshBasicMaterial({ map: numberTexture(String(i + 1).padStart(2, '0')), transparent: true, opacity: 0.4, depthWrite: false, toneMapped: false }),
-      );
-      num.position.set(slot.x < 0 ? -4.4 : 4.4, 3.2, -2.6);
-      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: PURPLE, transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending }));
-      glow.scale.set(12, 8, 1);
-      glow.position.set(0, top + 1.4, -0.8);
-      g.add(glow, num);
-      this.scene.add(g);
-      this.updaters.push((t) => {
-        g.position.y = Math.sin(t * 0.6 + i) * 0.06;
-        const on = this.hovered === i;
-        if (screen) {
-          const mat = screen.material as THREE.MeshBasicMaterial;
-          const target = on ? 1 : 0.62;
-          mat.color.setScalar(mat.color.r + (target - mat.color.r) * 0.1);
+      const w = 7.4;
+      const h = 4.6;
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, h + 0.3, 0.22), frameMat);
+      frame.position.z = -0.14;
+      const tex = this.screenTextures[i];
+      const img = tex.image as { width: number; height: number } | undefined;
+      if (img?.width) {
+        // "cover": recorta a imagem para a proporção da tela.
+        const ia = img.width / img.height;
+        const sa = w / h;
+        if (ia > sa) {
+          tex.repeat.set(sa / ia, 1);
+          tex.offset.set((1 - sa / ia) / 2, 0);
+        } else {
+          tex.repeat.set(1, ia / sa);
+          tex.offset.set(0, (1 - ia / sa) / 2);
         }
-        glow.material.opacity += ((on ? 0.45 : 0.18) - glow.material.opacity) * 0.1;
+      }
+      const screen = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, color: new THREE.Color(0.62, 0.62, 0.68) }));
+      screen.userData.index = i;
+      this.screens.push(screen);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w + 0.3, h + 0.3, 0.22)), edgeMat);
+      edges.position.z = -0.14;
+      const num = new THREE.Mesh(
+        new THREE.PlaneGeometry(9, 9),
+        new THREE.MeshBasicMaterial({ map: numberTexture(String(i + 1).padStart(2, '0')), transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false }),
+      );
+      num.position.set(slot.x < 0 ? -5.5 : 5.5, 1.2, -4);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: PURPLE, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending }));
+      glow.scale.set(16, 11, 1);
+      glow.position.z = -1.2;
+      g.add(glow, frame, screen, edges, num);
+      this.scene.add(g);
+      const baseY = slot.y;
+      this.updaters.push((t) => {
+        g.position.y = baseY + Math.sin(t * 0.8 + i) * 0.18;
+        g.rotation.z = Math.sin(t * 0.5 + i * 2) * 0.012;
+        const on = this.hovered === i;
+        const mat = screen.material as THREE.MeshBasicMaterial;
+        const target = on ? 0.95 : 0.62;
+        mat.color.r += (target - mat.color.r) * 0.1;
+        mat.color.g = mat.color.r;
+        mat.color.b = mat.color.r + 0.05;
+        glow.material.opacity += ((on ? 0.55 : 0.25) - glow.material.opacity) * 0.1;
       });
     });
   }
