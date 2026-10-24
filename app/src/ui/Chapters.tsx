@@ -36,14 +36,9 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
     <main className="track" id="conteudo">
       {/* 01 · Monólito */}
       <section className="ch ch--hero" id="hero" aria-labelledby="hero-title">
-        <div className="hero__top">
-          <p className="hero__statement">
-            <span className="mask"><span>Desenvolvedor <b>full stack</b>.</span></span>
-            <span className="mask"><span>ERPs, <b>APIs REST</b> e automações</span></span>
-            <span className="mask"><span>com TypeScript, JavaScript & Python.</span></span>
-          </p>
-        </div>
         <div className="hero__bottom">
+          <div>
+          <p className="hero__role">Desenvolvedor full stack</p>
           <h1 className="hero__name" id="hero-title">
             <span className="mask"><span>Paulo</span></span>
             <span className="mask"><span className="thin">Silva</span></span>
@@ -52,17 +47,16 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
               <span className="mask"><span>Silva</span></span>
             </span>
           </h1>
+          </div>
           <a className="hero__scroll mono" href="#manifesto">
             <i /> Role para explorar
           </a>
-          <p className="hero__hint">Passe o mouse no lago · clique para soltar uma lanterna</p>
         </div>
       </section>
 
       {/* 02 · Corredor */}
       <section className="ch ch--manifesto" id="manifesto" aria-label="Abordagem">
         <div className="sticky">
-          <p className="mono ch__label">Abordagem</p>
           <p className="manifesto__line" data-line="0">Meus projetos vivem na parte que ninguém vê:</p>
           <p className="manifesto__line hl" data-line="1">autenticação, validação, papéis de acesso e regras de negócio.</p>
           <p className="manifesto__line" data-line="2">E em interfaces que deixam tudo isso simples para quem usa no dia a dia.</p>
@@ -82,11 +76,6 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
                   <Chars text={p.name} />
                 </h2>
                 <p className="proj__sum">{p.summary.split('. ')[0]}.</p>
-                <ul className="proj__chips">
-                  {p.stack.slice(0, 4).map((t) => (
-                    <li key={t}>{t}</li>
-                  ))}
-                </ul>
                 <div className="proj__actions">
                   <button className="cta" onClick={() => onOpen(i)} data-cursor>
                     <Roll>Ver detalhes</Roll>
@@ -94,9 +83,6 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
                       <Arrow />
                     </span>
                   </button>
-                  <a className="cta cta--ghost" href={p.repo} target="_blank" rel="noopener noreferrer" data-cursor>
-                    <GitHubIcon /> <Roll>Código</Roll>
-                  </a>
                 </div>
               </div>
               <span className="proj__count" aria-hidden="true">

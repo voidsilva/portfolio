@@ -624,7 +624,7 @@ export class World {
     wtex.anisotropy = 8;
     const word = new THREE.Mesh(
       new THREE.PlaneGeometry(34, 6.6),
-      new THREE.MeshBasicMaterial({ map: wtex, transparent: true, depthWrite: false, opacity: 1, fog: false, color: new THREE.Color(0.36, 0.36, 0.44) }),
+      new THREE.MeshBasicMaterial({ map: wtex, transparent: true, depthWrite: false, opacity: 1, fog: false, color: new THREE.Color(0.24, 0.24, 0.31) }),
     );
     word.position.set(1.5, 3.2, -24);
     word.renderOrder = 2; // desenha depois do céu (que é transparente e fica no plano de fundo)
@@ -1145,11 +1145,11 @@ export class World {
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const t = this.clock.elapsedTime;
-    const k = 1 - Math.exp(-dt * 3.4);
+    const k = 1 - Math.exp(-dt * 2.8);
     const c = this.cur as unknown as Record<string, number>;
     const r = this.rig as unknown as Record<string, number>;
     for (const key in r) c[key] += (r[key] - c[key]) * (key === 'glitch' ? Math.min(1, k * 3) : k);
-    this.pointerCur.lerp(this.pointer, 1 - Math.exp(-dt * 2.2));
+    this.pointerCur.lerp(this.pointer, 1 - Math.exp(-dt * 1.8));
     this.apply(t, dt);
     this.composer.render();
     if (dt > 0) {

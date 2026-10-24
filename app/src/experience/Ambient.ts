@@ -1,38 +1,31 @@
 /**
- * Trilha ambiente generativa, composta ao vivo com a Web Audio API.
- * Nada é um arquivo de áudio: cada capítulo tem seus acordes, o scroll abre o
- * filtro e as notas soltas são sorteadas de uma escala pentatônica.
+ * Trilha noturna generativa, composta ao vivo com a Web Audio API.
+ * Clima lo-fi bem calmo: piano elétrico suave tocando acordes lentos, um grave
+ * redondo, um pad distante e chiado de vinil. Nada é arquivo de áudio.
  */
 
 const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
 
-// Acordes por capítulo (notas MIDI): calmos, com sétimas e nonas.
-const CHORDS: number[][] = [
-  [48, 55, 59, 64, 71], // Cmaj7 — Início
-  [45, 52, 59, 60, 67], // Am9 — Abordagem
-  [41, 48, 55, 57, 64], // Fmaj7 — Projetos
-  [50, 57, 60, 64, 69], // Dm9 — Sobre
-  [52, 59, 62, 67, 71], // Em7 — Ferramentas
-  [48, 55, 62, 64, 71], // Cmaj9 — Contato
+// Progressão de 4 acordes (um por compasso, a ~62 bpm): Fmaj9 · Em7 · Dm9 · Cmaj7
+const PROG: { bass: number; keys: number[] }[] = [
+  { bass: 41, keys: [57, 60, 64, 67] },
+  { bass: 40, keys: [55, 59, 62, 67] },
+  { bass: 38, keys: [57, 60, 64, 65] },
+  { bass: 36, keys: [55, 59, 62, 64] },
 ];
-const PENTA = [72, 74, 76, 79, 81, 84, 86, 88];
-
-interface Voice {
-  oscs: OscillatorNode[];
-  gain: GainNode;
-}
+const BEAT = 60 / 62;
+const BRIGHT = [900, 1100, 1300, 1000, 1200, 800]; // brilho do som por capítulo
 
 export class Ambient {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
-  private filter!: BiquadFilterNode;
+  private tone!: BiquadFilterNode;
   private reverb!: ConvolverNode;
-  private wet!: GainNode;
-  private voices: Voice[] = [];
-  private chapter = -1;
-  private bellTimer = 0;
-  private energy = 0;
-  private energyRaf = 0;
+  private vinyl: AudioBufferSourceNode | null = null;
+  private timer = 0;
+  private nextBar = 0;
+  private bar = 0;
+  private chapter = 0;
   enabled = false;
 
   /** Precisa ser chamado dentro de um gesto do usuário (clique). */
@@ -42,19 +35,17 @@ export class Ambient {
     void ctx.resume();
     this.enabled = true;
     this.master.gain.cancelScheduledValues(ctx.currentTime);
-    this.master.gain.setTargetAtTime(0.5, ctx.currentTime, 1.6);
-    this.setChapter(Math.max(0, this.chapter), true);
-    this.scheduleBell();
-    this.loopEnergy();
+    this.master.gain.setTargetAtTime(0.42, ctx.currentTime, 2.2);
+    this.nextBar = ctx.currentTime + 0.3;
+    this.schedule();
   }
 
   stop() {
     if (!this.ctx) return;
     this.enabled = false;
-    this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.6);
-    clearTimeout(this.bellTimer);
-    cancelAnimationFrame(this.energyRaf);
-    setTimeout(() => !this.enabled && this.ctx?.suspend(), 2500);
+    this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.8);
+    clearTimeout(this.timer);
+    setTimeout(() => !this.enabled && this.ctx?.suspend(), 3000);
   }
 
   toggle() {
@@ -69,123 +60,155 @@ export class Ambient {
     this.master = ctx.createGain();
     this.master.gain.value = 0;
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -20;
-    comp.ratio.value = 3;
+    comp.threshold.value = -24;
+    comp.ratio.value = 2.5;
     this.master.connect(comp).connect(ctx.destination);
 
-    this.filter = ctx.createBiquadFilter();
-    this.filter.type = 'lowpass';
-    this.filter.frequency.value = 700;
-    this.filter.Q.value = 0.6;
+    this.tone = ctx.createBiquadFilter();
+    this.tone.type = 'lowpass';
+    this.tone.frequency.value = 1000;
+    this.tone.Q.value = 0.4;
 
-    // Reverb gerado: ruído com decaimento exponencial.
     this.reverb = ctx.createConvolver();
-    const len = ctx.sampleRate * 5;
+    const len = ctx.sampleRate * 4;
     const ir = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let c = 0; c < 2; c++) {
       const d = ir.getChannelData(c);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.5);
     }
     this.reverb.buffer = ir;
-    this.wet = ctx.createGain();
-    this.wet.gain.value = 0.55;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.38;
     const dry = ctx.createGain();
-    dry.gain.value = 0.45;
-    this.filter.connect(dry).connect(this.master);
-    this.filter.connect(this.reverb).connect(this.wet).connect(this.master);
+    dry.gain.value = 0.7;
+    this.tone.connect(dry).connect(this.master);
+    this.tone.connect(this.reverb).connect(wet).connect(this.master);
 
-    // LFO lento no filtro: o som "respira".
-    const lfo = ctx.createOscillator();
-    const lfoGain = ctx.createGain();
-    lfo.frequency.value = 0.07;
-    lfoGain.gain.value = 180;
-    lfo.connect(lfoGain).connect(this.filter.frequency);
-    lfo.start();
-  }
-
-  /** Troca o acorde com um crossfade longo. */
-  setChapter(i: number, force = false) {
-    if (!this.ctx || (!force && i === this.chapter)) {
-      this.chapter = i;
-      return;
+    // chiado de vinil: ruído rosado bem baixo com estalos esparsos
+    const nb = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate);
+    const nd = nb.getChannelData(0);
+    let b0 = 0;
+    for (let i = 0; i < nd.length; i++) {
+      b0 = 0.97 * b0 + 0.03 * (Math.random() * 2 - 1);
+      nd[i] = b0 * 0.6 + (Math.random() < 0.0004 ? (Math.random() - 0.5) * 0.9 : 0);
     }
-    this.chapter = i;
-    if (!this.enabled) return;
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-    this.voices.forEach((v) => {
-      v.gain.gain.cancelScheduledValues(now);
-      v.gain.gain.setTargetAtTime(0, now, 1.8);
-      v.oscs.forEach((o) => o.stop(now + 9));
-    });
-    this.voices = CHORDS[i % CHORDS.length].map((n, k) => {
-      const gain = ctx.createGain();
-      gain.gain.value = 0;
-      gain.gain.setTargetAtTime(k === 0 ? 0.11 : 0.06, now, 2.4);
-      gain.connect(this.filter);
-      const oscs = [-7, 0, 7].map((det, j) => {
-        const o = ctx.createOscillator();
-        o.type = j === 1 ? 'triangle' : 'sawtooth';
-        o.frequency.value = midi(n);
-        o.detune.value = det + (Math.random() - 0.5) * 4;
-        const g = ctx.createGain();
-        g.gain.value = j === 1 ? 0.9 : 0.18;
-        o.connect(g).connect(gain);
-        o.start(now);
-        return o;
-      });
-      return { oscs, gain };
-    });
+    const src = ctx.createBufferSource();
+    src.buffer = nb;
+    src.loop = true;
+    const vg = ctx.createGain();
+    vg.gain.value = 0.05;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 900;
+    src.connect(hp).connect(vg).connect(this.master);
+    src.start();
+    this.vinyl = src;
   }
 
-  /** Intensidade do scroll (0…1): abre o filtro e realça o reverb. */
-  push(v: number) {
-    this.energy = Math.min(1, this.energy + Math.abs(v));
-  }
-
-  private loopEnergy = () => {
+  /** Agenda os compassos alguns segundos à frente (sem travar a página). */
+  private schedule = () => {
     if (!this.ctx || !this.enabled) return;
-    this.energy *= 0.94;
-    const t = this.ctx.currentTime;
-    this.filter.frequency.setTargetAtTime(650 + this.energy * 1600, t, 0.25);
-    this.energyRaf = requestAnimationFrame(this.loopEnergy);
+    const ctx = this.ctx;
+    while (this.nextBar < ctx.currentTime + 4) {
+      this.playBar(this.nextBar, PROG[this.bar % PROG.length]);
+      this.nextBar += BEAT * 4;
+      this.bar++;
+    }
+    this.timer = window.setTimeout(this.schedule, 1000);
   };
 
-  /** Uma nota de sino, suave e com eco. */
-  bell(n = PENTA[Math.floor(Math.random() * PENTA.length)], vol = 0.05) {
-    if (!this.ctx || !this.enabled) return;
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(vol, now + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + 3.5);
-    [1, 2.01, 3.98].forEach((h, i) => {
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.value = midi(n) * h;
-      const og = ctx.createGain();
-      og.gain.value = [1, 0.25, 0.08][i];
-      o.connect(og).connect(g);
-      o.start(now);
-      o.stop(now + 3.6);
+  private playBar(t: number, chord: { bass: number; keys: number[] }) {
+    // piano elétrico: acorde no tempo 1 e um eco mais suave no tempo 3
+    chord.keys.forEach((n, i) => {
+      this.epiano(n, t + i * 0.025, 0.055, BEAT * 3.6);
+      if (Math.random() < 0.7) this.epiano(n, t + BEAT * 2 + i * 0.03, 0.03, BEAT * 2);
     });
-    g.connect(this.reverb);
-    g.connect(this.master);
+    // uma nota de melodia, às vezes
+    if (Math.random() < 0.45) {
+      const top = chord.keys[chord.keys.length - 1] + 12;
+      const pick = [top, top - 3, top + 2, top - 5][Math.floor(Math.random() * 4)];
+      this.epiano(pick, t + BEAT * (1 + Math.floor(Math.random() * 3)), 0.035, BEAT * 2.5);
+    }
+    this.bass(chord.bass, t, BEAT * 3.8);
+    this.pad(chord.keys, t, BEAT * 4.2);
   }
 
-  private scheduleBell() {
-    clearTimeout(this.bellTimer);
-    if (!this.enabled) return;
-    this.bellTimer = window.setTimeout(() => {
-      this.bell();
-      this.scheduleBell();
-    }, 2200 + Math.random() * 4200);
+  /** Piano elétrico tipo Rhodes: senoide com leve FM e decaimento longo. */
+  private epiano(n: number, t: number, vol: number, dur: number) {
+    const ctx = this.ctx!;
+    const car = ctx.createOscillator();
+    const mod = ctx.createOscillator();
+    const modG = ctx.createGain();
+    const g = ctx.createGain();
+    const f = midi(n);
+    car.frequency.value = f;
+    mod.frequency.value = f * 2;
+    modG.gain.setValueAtTime(f * 0.9, t);
+    modG.gain.exponentialRampToValueAtTime(f * 0.05, t + 0.6);
+    mod.connect(modG).connect(car.frequency);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    car.connect(g).connect(this.tone);
+    car.start(t);
+    mod.start(t);
+    car.stop(t + dur + 0.1);
+    mod.stop(t + dur + 0.1);
+  }
+
+  private bass(n: number, t: number, dur: number) {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = midi(n);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.09, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.1);
+  }
+
+  private pad(keys: number[], t: number, dur: number) {
+    const ctx = this.ctx!;
+    keys.slice(0, 3).forEach((n, i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'triangle';
+      o.frequency.value = midi(n + 12);
+      o.detune.value = (i - 1) * 6;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.012, t + dur * 0.4);
+      g.gain.linearRampToValueAtTime(0, t + dur);
+      o.connect(g).connect(this.reverb);
+      o.start(t);
+      o.stop(t + dur + 0.1);
+    });
+  }
+
+  /** Cada capítulo só muda o brilho do som, sem quebrar a música. */
+  setChapter(i: number, _force = false) {
+    this.chapter = i;
+    if (this.ctx) this.tone.frequency.setTargetAtTime(BRIGHT[i % BRIGHT.length], this.ctx.currentTime, 2.5);
+  }
+
+  /** Scroll rápido abre um pouco o filtro. */
+  push(v: number) {
+    if (!this.ctx || !this.enabled) return;
+    const base = BRIGHT[this.chapter % BRIGHT.length];
+    this.tone.frequency.setTargetAtTime(base + Math.min(1, v) * 700, this.ctx.currentTime, 0.4);
+  }
+
+  /** Nota de sino suave (hover em projeto, lanterna). */
+  bell(n = 84, vol = 0.04) {
+    if (!this.ctx || !this.enabled) return;
+    this.epiano(n, this.ctx.currentTime, vol, 3);
   }
 
   dispose() {
-    clearTimeout(this.bellTimer);
-    cancelAnimationFrame(this.energyRaf);
+    clearTimeout(this.timer);
+    this.vinyl?.stop();
     void this.ctx?.close();
     this.ctx = null;
   }

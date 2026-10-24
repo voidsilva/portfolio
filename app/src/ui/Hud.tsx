@@ -60,7 +60,7 @@ export function Hud({ chapter, progress, onNav, sound, onSound }: { chapter: num
           </a>
         </div>
       </header>
-      <div className="hud hud--bottom" aria-hidden="true">
+      <div className={`hud hud--bottom${chapter === 0 ? ' is-quiet' : ''}`} aria-hidden="true">
         <span className="hud__chapter">
           <b>{String(chapter + 1).padStart(2, '0')}</b> <span key={chapter} className="hud__flip">{CHAPTERS[chapter].label}</span>
         </span>

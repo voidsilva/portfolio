@@ -1657,7 +1657,6 @@ button:focus-visible .roll::after {
   -webkit-background-clip: text;
   background-clip: text;
   animation: inkflow 6s linear infinite;
-  filter: drop-shadow(0 0 18px rgba(165, 150, 242, 0.45));
 }
 @keyframes inkflow {
   to {
@@ -1686,4 +1685,40 @@ button:focus-visible .roll::after {
   .hero__hint {
     display: none;
   }
+}
+
+/* v6 · menos informação e animações mais leves */
+.hero__role {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--gray);
+  margin-bottom: 14px;
+}
+.ch--hero {
+  justify-content: flex-end;
+}
+.hud--bottom {
+  transition: opacity 0.8s var(--ease);
+}
+.hud--bottom.is-quiet {
+  opacity: 0;
+}
+.proj__count {
+  font-size: clamp(40px, 4.5vw, 64px);
+  opacity: 0.7;
+}
+.proj__text .proj__sum {
+  max-width: 40ch;
+}
+.mask > span,
+.chars .c,
+.manifesto__line,
+.proj__text > * {
+  will-change: transform, opacity;
+}
+.manifesto__line {
+  text-shadow: 0 2px 40px rgba(8, 9, 13, 0.6);
 }

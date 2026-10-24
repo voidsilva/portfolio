@@ -144,7 +144,7 @@ export default function App() {
       return () => st.kill();
     }
 
-    const l = new Lenis({ lerp: 0.075, wheelMultiplier: 0.85, touchMultiplier: 1.4 });
+    const l = new Lenis({ lerp: 0.07, wheelMultiplier: 0.8, touchMultiplier: 1.3, smoothWheel: true });
     lenis.current = l;
     l.on('scroll', (e: Lenis) => {
       ScrollTrigger.update();
@@ -159,21 +159,18 @@ export default function App() {
       // Intro: a câmera chega de longe com um glitch.
       if (w && K) {
         w.introStart();
-        gsap.fromTo(w.rig, { glitch: 1 }, { glitch: 0, duration: 1.4, ease: 'power2.out' });
         gsap.to(w.rig, { pz: K.hero.pz, py: K.hero.py, duration: 3.2, ease: 'expo.out' });
       }
-      gsap.from('.ch--hero .mask > span', { yPercent: 115, duration: 1.4, stagger: 0.08, ease: 'expo.out', delay: 0.5 });
-      gsap.from('.hero__scroll, .hud', { autoAlpha: 0, duration: 1.2, delay: 1.2 });
+      gsap.from('.ch--hero .hero__name > .mask > span', { yPercent: 110, duration: 1.6, stagger: 0.12, ease: 'expo.out', delay: 0.9 });
+      gsap.from('.hero__role', { autoAlpha: 0, y: 12, duration: 1.2, ease: 'power3.out', delay: 1.3 });
+      gsap.from('.hero__scroll, .hud--top', { autoAlpha: 0, duration: 1.4, ease: 'power2.out', delay: 1.8 });
 
       // Câmera: segmentos sequenciais, cada um amarrado a um trecho do scroll.
       if (w && K) {
         const seg = (a: Rig, b: Rig, st: ScrollTrigger.Vars) =>
           gsap.fromTo(w.rig, { ...a, glitch: 0 }, { ...b, glitch: 0, ease: 'none', immediateRender: false, scrollTrigger: { ...st, scrub: true } });
-        const pulse = (trigger: string, start: string, end: string) =>
-          gsap
-            .timeline({ scrollTrigger: { trigger, start, end, scrub: true } })
-            .to(w.rig, { glitch: 1, duration: 0.5, ease: 'none' }, 0)
-            .to(w.rig, { glitch: 0, duration: 0.5, ease: 'none' }, 0.5);
+        // transições limpas: sem glitch, só névoa e movimento de câmera
+        const pulse = (..._args: string[]) => void _args;
 
         seg(K.hero, K.over, { trigger: '#hero', start: 'top top', end: 'bottom top' });
         seg(K.over, K.corridor, { trigger: '#manifesto', start: 'top top', end: 'bottom bottom' });
@@ -194,16 +191,16 @@ export default function App() {
       const lines = gsap.utils.toArray<HTMLElement>('.manifesto__line');
       const mtl = gsap.timeline({ scrollTrigger: { trigger: '#manifesto', start: 'top top', end: 'bottom bottom', scrub: 0.5 } });
       lines.forEach((ln, i) => {
-        mtl.fromTo(ln, { autoAlpha: 0, y: 60, filter: 'blur(12px)' }, { autoAlpha: 1, y: 0, filter: 'blur(0px)', duration: 1 }, i * 1.1);
+        mtl.fromTo(ln, { autoAlpha: 0, y: 50, scale: 0.98 }, { autoAlpha: 1, y: 0, scale: 1, duration: 1, ease: 'power2.out' }, i * 1.1);
       });
-      mtl.to(lines, { autoAlpha: 0, y: -50, filter: 'blur(10px)', stagger: 0.15, duration: 1 }, '+=0.8');
+      mtl.to(lines, { autoAlpha: 0, y: -40, stagger: 0.15, duration: 1, ease: 'power2.in' }, '+=0.8');
 
       // Projetos: o nome se monta letra a letra quando a placa chega.
       projects.forEach((p) => {
         const el = document.getElementById(`p-${p.id}`)!;
         const tl = gsap.timeline({ paused: true });
         tl.fromTo(el.querySelectorAll('.c'), { yPercent: 120, rotate: 8, autoAlpha: 0 }, { yPercent: 0, rotate: 0, autoAlpha: 1, stagger: 0.018, duration: 0.9, ease: 'expo.out' })
-          .fromTo(el.querySelectorAll('.proj__kicker, .proj__sum, .proj__chips, .proj__actions, .proj__count'), { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, stagger: 0.06, duration: 0.8, ease: 'expo.out' }, 0.15);
+          .fromTo(el.querySelectorAll('.proj__kicker, .proj__sum, .proj__actions, .proj__count'), { autoAlpha: 0, y: 14 }, { autoAlpha: 1, y: 0, stagger: 0.07, duration: 1, ease: 'power3.out' }, 0.2);
         ScrollTrigger.create({
           trigger: el,
           start: 'top 15%',
