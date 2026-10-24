@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Silva Dev · Em breve</title>
+  <meta name="description" content="Portfólio de Paulo Silva. Em construção, chegando em breve.">
+  <meta name="theme-color" content="#0b0b0f">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%230b0b0f'/><text x='50%' y='54%' text-anchor='middle' dominant-baseline='middle' font-family='monospace' font-size='30' font-weight='700' fill='%23c8ff4d'>S/</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0b0f;
+      --fg: #ededf0;
+      --muted: #8a8a96;
+      --line: #1f1f27;
+      --accent: #c8ff4d;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 70%);
+      opacity: .6;
+      pointer-events: none;
+      z-index: -1;
+    }
+    header, footer {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 24px clamp(16px, 5vw, 56px);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 13px; color: var(--muted);
+    }
+    .logo { color: var(--fg); font-weight: 500; letter-spacing: .02em; }
+    .logo span { color: var(--accent); }
+    .status { display: inline-flex; align-items: center; gap: 8px; }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(200,255,77,.6);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(200,255,77,.5); }
+      70% { box-shadow: 0 0 0 10px rgba(200,255,77,0); }
+      100% { box-shadow: 0 0 0 0 rgba(200,255,77,0); }
+    }
+    main {
+      align-self: center;
+      padding: 0 clamp(16px, 5vw, 56px);
+      max-width: 1100px; width: 100%; margin: 0 auto;
+    }
+    .tag {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 13px; color: var(--accent);
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: clamp(44px, 10vw, 128px);
+      line-height: .95; font-weight: 700;
+      letter-spacing: -.04em;
+    }
+    h1 .out { color: transparent; -webkit-text-stroke: 1.5px var(--fg); }
+    .cursor {
+      display: inline-block; width: .08em; height: .8em;
+      background: var(--accent); margin-left: .05em;
+      vertical-align: baseline;
+      animation: blink 1s steps(1) infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+    p.lead {
+      margin-top: 28px; max-width: 520px;
+      font-size: clamp(16px, 2vw, 19px); line-height: 1.55;
+      color: var(--muted);
+    }
+    p.lead strong { color: var(--fg); font-weight: 500; }
+    .links { margin-top: 36px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .links a {
+      font-family: "JetBrains Mono", monospace; font-size: 14px;
+      color: var(--fg); text-decoration: none;
+      padding: 12px 18px; border: 1px solid var(--line);
+      border-radius: 999px; background: rgba(255,255,255,.02);
+      transition: border-color .2s, color .2s, transform .2s;
+    }
+    .links a:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-2px); }
+    @media (prefers-reduced-motion: reduce) {
+      .dot, .cursor { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">silva<span>.</span>dev</div>
+    <div class="status"><i class="dot"></i>em construção</div>
+  </header>
+
+  <main>
+    <div class="tag">// portfólio v1.0</div>
+    <h1>Algo novo<br><span class="out">em breve</span><span class="cursor"></span></h1>
+    <p class="lead">Olá, eu sou <strong>Paulo Silva</strong>. Estou preparando um espaço para mostrar meus projetos e meu trabalho como desenvolvedor. Volte logo.</p>
+    <div class="links">
+      <a href="https://github.com/voidsilva" target="_blank" rel="noopener">GitHub ↗</a>
+      <a href="mailto:pauloricardo@happymachine.com.br">E-mail ↗</a>
+    </div>
+  </main>
+
+  <footer>
+    <span>© <span id="y">2026</span> silvadev.xyz</span>
+    <span>feito com café</span>
+  </footer>
+  <script>document.getElementById('y').textContent = new Date().getFullYear();</script>
+</body>
+</html>
