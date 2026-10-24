@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { profile, projects, archive, stack } from '../data/content';
 import { Arrow, GitHubIcon } from '../components/Logo';
+import { Roll } from './Hud';
 
 export const CHAPTERS = [
   { id: 'hero', label: 'Início' },
@@ -68,37 +69,70 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
         {projects.map((p, i) => (
           <article className="proj" id={`p-${p.id}`} key={p.id} aria-labelledby={`t-${p.id}`}>
             <div className="sticky proj__stage">
-              <p className="mono proj__kicker">
-                <b>{p.index}</b> {p.kicker}
-              </p>
-              <h2 className="proj__name" id={`t-${p.id}`}>
-                <Chars text={p.name} />
-              </h2>
-              <button className="proj__open" onClick={() => onOpen(i)} data-cursor>
-                Abrir projeto
-              </button>
-              <div className="proj__meta mono">
-                <span>{p.stack.slice(0, 4).join(' · ')}</span>
-                <span>
-                  {p.index} / {String(projects.length).padStart(2, '0')}
-                </span>
+              <div className="proj__card">
+                <p className="proj__kicker">
+                  <b>{p.index}</b> {p.kicker}
+                </p>
+                <h2 className="proj__name" id={`t-${p.id}`}>
+                  <Chars text={p.name} />
+                </h2>
+                <p className="proj__sum">{p.summary.split('. ')[0]}.</p>
+                <ul className="proj__chips">
+                  {p.stack.slice(0, 4).map((t) => (
+                    <li key={t}>{t}</li>
+                  ))}
+                </ul>
+                <div className="proj__actions">
+                  <button className="cta" onClick={() => onOpen(i)} data-cursor>
+                    <Roll>Ver detalhes</Roll>
+                    <span className="cta__dot" aria-hidden="true">
+                      <Arrow />
+                    </span>
+                  </button>
+                  <a className="cta cta--ghost" href={p.repo} target="_blank" rel="noopener noreferrer" data-cursor>
+                    <GitHubIcon /> <Roll>Código</Roll>
+                  </a>
+                </div>
               </div>
+              <span className="proj__count" aria-hidden="true">
+                {p.index}
+                <small>/{String(projects.length).padStart(2, '0')}</small>
+              </span>
               <div className="proj__lite">
                 <img src={images[i]} alt={p.preview.kind === 'image' ? p.preview.alt : `Ilustração de ${p.name}`} loading="lazy" />
-                <p>{p.summary}</p>
               </div>
             </div>
           </article>
         ))}
+        <div className="marquee" aria-hidden="true">
+          <div className="marquee__track">
+            {[0, 1].map((k) => (
+              <span key={k}>
+                {stack.map((t) => (
+                  <em key={t.name}>
+                    {t.name}
+                    <i>✦</i>
+                  </em>
+                ))}
+              </span>
+            ))}
+          </div>
+        </div>
         <div className="archive">
-          <p className="mono ch__label">Arquivo · outros repositórios</p>
-          <ul>
-            {archive.map((a) => (
-              <li key={a.name}>
+          <p className="mono ch__label">Mais trabalhos</p>
+          <ul className="bento">
+            {archive.map((a, k) => (
+              <li key={a.name} style={{ ['--h' as string]: String((k * 47) % 360) }}>
                 <a href={a.url} target="_blank" rel="noopener noreferrer" data-cursor>
+                  <span className="bento__cover" aria-hidden="true">
+                    <b>{a.name.slice(0, 2)}</b>
+                  </span>
                   <strong>{a.name}</strong>
                   <span>{a.note}</span>
-                  <em className="mono">{a.tags.join(' · ')}</em>
+                  <em>{a.tags.join(' · ')}</em>
+                  <span className="bento__go" aria-hidden="true">
+                    <Arrow />
+                  </span>
                 </a>
               </li>
             ))}
@@ -175,8 +209,11 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
             <span className="mask"><span className="thin">o próximo?</span></span>
           </h2>
           <p>Os projetos, o código e o histórico estão no GitHub. Para falar comigo, comece por lá.</p>
-          <a className="btn" href={profile.github} target="_blank" rel="noopener noreferrer" data-cursor>
-            <GitHubIcon /> github.com/{profile.handle} <Arrow />
+          <a className="cta cta--big" href={profile.github} target="_blank" rel="noopener noreferrer" data-cursor>
+            <GitHubIcon /> <Roll>{`github.com/${profile.handle}`}</Roll>
+            <span className="cta__dot" aria-hidden="true">
+              <Arrow />
+            </span>
           </a>
           <footer className="foot mono">
             <span>© {new Date().getFullYear()} Paulo Silva · silvadev.xyz</span>

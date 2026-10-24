@@ -75,7 +75,7 @@ export const KEYS: Record<string, Rig> = {
   ...Object.fromEntries(
     SLOTS.map((s, i) => [
       `p${i}`,
-      { px: s.x * 0.22, py: s.y + 0.2, pz: s.z + 10.5, lx: s.x * 0.92, ly: s.y, lz: s.z, roll: s.x < 0 ? 0.015 : -0.015, fog: 2, glitch: 0, morph: 0, energy: 1 },
+      { px: s.x * 0.22 - 1.6, py: s.y + 0.4, pz: s.z + 11, lx: s.x - 2.4, ly: s.y + 0.3, lz: s.z, roll: s.x < 0 ? 0.015 : -0.015, fog: 2, glitch: 0, morph: 0, energy: 1 },
     ]),
   ),
   about: { px: 0, py: 6, pz: CORE_Z + 17, lx: -3.6, ly: 6, lz: CORE_Z, roll: 0, fog: 3, glitch: 0, morph: 0, energy: 1 },
@@ -124,6 +124,7 @@ export class World {
     this.high = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.high ? 1.5 : 1));
+    this.dprMax = this.renderer.getPixelRatio();
     this.renderer.debug.checkShaderErrors = import.meta.env.DEV;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
@@ -257,8 +258,8 @@ export class World {
           }`,
       };
       const r = new Reflector(new THREE.PlaneGeometry(160, 260), {
-        textureWidth: Math.round(window.innerWidth * 0.6),
-        textureHeight: Math.round(window.innerHeight * 0.6),
+        textureWidth: Math.round(window.innerWidth * 0.5),
+        textureHeight: Math.round(window.innerHeight * 0.5),
         color: new THREE.Color('#9a98b4'),
         clipBias: 0.003,
         shader,
@@ -545,7 +546,7 @@ export class World {
     }
     if (this.high) {
       lanternLight.castShadow = true;
-      lanternLight.shadow.mapSize.set(1024, 1024);
+      lanternLight.shadow.mapSize.set(512, 512);
       lanternLight.shadow.bias = -0.002;
       lanternLight.shadow.radius = 4;
     }
@@ -975,11 +976,30 @@ export class World {
       this.fpsN++;
       if (this.fpsAcc > 0.5) {
         this.fps = Math.round(this.fpsN / this.fpsAcc);
+        this.adapt();
         this.fpsAcc = 0;
         this.fpsN = 0;
       }
     }
   };
+
+  /** Qualidade adaptativa: baixa a resolução se o FPS cair, sobe de volta se sobrar folga. */
+  private dprMax = Math.min(window.devicePixelRatio, 1.5);
+  private slow = 0;
+  private adapt() {
+    const dpr = this.renderer.getPixelRatio();
+    if (this.fps < 48) this.slow++;
+    else if (this.fps > 58) this.slow--;
+    let next = dpr;
+    if (this.slow >= 2 && dpr > 0.75) next = Math.max(0.75, dpr - 0.25);
+    if (this.slow <= -6 && dpr < this.dprMax) next = Math.min(this.dprMax, dpr + 0.25);
+    if (next !== dpr) {
+      this.slow = 0;
+      this.renderer.setPixelRatio(next);
+      this.composer.setPixelRatio(next);
+      this.resize();
+    }
+  }
 
   private apply(t: number, dt: number) {
     const s = this.cur;

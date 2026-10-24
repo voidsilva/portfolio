@@ -144,7 +144,7 @@ export default function App() {
       return () => st.kill();
     }
 
-    const l = new Lenis({ lerp: 0.085, wheelMultiplier: 0.9 });
+    const l = new Lenis({ lerp: 0.075, wheelMultiplier: 0.85, touchMultiplier: 1.4 });
     lenis.current = l;
     l.on('scroll', (e: Lenis) => {
       ScrollTrigger.update();
@@ -202,7 +202,7 @@ export default function App() {
         const el = document.getElementById(`p-${p.id}`)!;
         const tl = gsap.timeline({ paused: true });
         tl.fromTo(el.querySelectorAll('.c'), { yPercent: 120, rotate: 8, autoAlpha: 0 }, { yPercent: 0, rotate: 0, autoAlpha: 1, stagger: 0.018, duration: 0.9, ease: 'expo.out' })
-          .fromTo(el.querySelectorAll('.proj__kicker, .proj__open, .proj__meta'), { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, stagger: 0.06, duration: 0.8, ease: 'expo.out' }, 0.15);
+          .fromTo(el.querySelectorAll('.proj__kicker, .proj__sum, .proj__chips, .proj__actions, .proj__count'), { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, stagger: 0.06, duration: 0.8, ease: 'expo.out' }, 0.15);
         ScrollTrigger.create({
           trigger: el,
           start: 'top 15%',
@@ -210,7 +210,14 @@ export default function App() {
           onToggle: (s) => (s.isActive ? tl.timeScale(1).play() : tl.timeScale(2).reverse()),
         });
       });
-      gsap.from('.archive li', { autoAlpha: 0, y: 30, stagger: 0.06, scrollTrigger: { trigger: '.archive', start: 'top 80%' } });
+      gsap.from('.archive li', { autoAlpha: 0, y: 40, scale: 0.96, stagger: 0.07, duration: 1, ease: 'expo.out', scrollTrigger: { trigger: '.archive', start: 'top 80%' } });
+
+      // Faixa da stack: corre sem parar e acelera com a velocidade do scroll.
+      const mq = gsap.to('.marquee__track', { xPercent: -50, duration: 38, ease: 'none', repeat: -1 });
+      l.on('scroll', (e: Lenis) => {
+        const v = Math.min(6, 1 + Math.abs(e.velocity) / 8);
+        gsap.to(mq, { timeScale: e.direction < 0 ? -v : v, duration: 0.4, overwrite: true });
+      });
 
       gsap.fromTo('.about > *', { autoAlpha: 0, x: -60 }, { autoAlpha: 1, x: 0, stagger: 0.08, ease: 'none', scrollTrigger: { trigger: '#sobre', start: 'top 70%', end: 'top 10%', scrub: 0.6 } });
       gsap.fromTo('.tech', { autoAlpha: 0, y: 40 }, { autoAlpha: 1, y: 0, stagger: 0.03, ease: 'none', clearProps: 'opacity,visibility', scrollTrigger: { trigger: '#stack', start: 'top 70%', end: 'top 10%', scrub: 0.6 } });

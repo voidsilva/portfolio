@@ -4,7 +4,34 @@ import { Brand, Arrow, GitHubIcon } from '../components/Logo';
 import { profile, projects, type Project } from '../data/content';
 import { CHAPTERS } from './Chapters';
 
+const NAV = [
+  { id: 'hero', label: 'Início', ch: 0 },
+  { id: 'projetos', label: 'Projetos', ch: 2 },
+  { id: 'sobre', label: 'Sobre', ch: 3 },
+  { id: 'contato', label: 'Contato', ch: 5 },
+];
+
+/** Texto que "rola" para cima no hover, revelando uma cópia. */
+export function Roll({ children }: { children: string }) {
+  return (
+    <span className="roll" data-t={children}>
+      <span>{children}</span>
+    </span>
+  );
+}
+
 export function Hud({ chapter, progress, onNav, sound, onSound }: { chapter: number; progress: number; onNav: (id: string) => void; sound: boolean; onSound: () => void }) {
+  const nav = useRef<HTMLElement>(null);
+  const hl = useRef<HTMLSpanElement>(null);
+  const active = NAV.reduce((acc, n, i) => (chapter >= n.ch ? i : acc), 0);
+
+  // o destaque desliza até o item da seção atual
+  useEffect(() => {
+    const el = nav.current?.querySelectorAll<HTMLAnchorElement>('a')[active];
+    if (!el || !hl.current) return;
+    gsap.to(hl.current, { x: el.offsetLeft, width: el.offsetWidth, duration: 0.7, ease: 'expo.out' });
+  }, [active]);
+
   const go = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
     onNav(id);
@@ -15,26 +42,31 @@ export function Hud({ chapter, progress, onNav, sound, onSound }: { chapter: num
         <a href="#hero" className="brand" onClick={(e) => go(e, 'hero')} aria-label="SilvaDev, voltar ao início" data-cursor>
           <Brand />
         </a>
-        <nav className="hud__nav mono" aria-label="Principal">
-          <a href="#projetos" onClick={(e) => go(e, 'projetos')} data-cursor>Projetos</a>
-          <a href="#sobre" onClick={(e) => go(e, 'sobre')} data-cursor>Sobre</a>
-          <a href="#contato" onClick={(e) => go(e, 'contato')} data-cursor>Contato</a>
-          <a href={profile.github} target="_blank" rel="noopener noreferrer" data-cursor>GitHub</a>
+        <nav className="pill" aria-label="Principal" ref={nav}>
+          <span className="pill__hl" ref={hl} aria-hidden="true" />
+          {NAV.map((n, i) => (
+            <a key={n.id} href={`#${n.id}`} className={i === active ? 'on' : ''} onClick={(e) => go(e, n.id)} aria-current={i === active ? 'true' : undefined} data-cursor>
+              <Roll>{n.label}</Roll>
+            </a>
+          ))}
         </nav>
+        <div className="hud__actions">
+          <button className={`chip${sound ? ' is-on' : ''}`} onClick={onSound} aria-pressed={sound} aria-label={sound ? 'Desligar som' : 'Ligar som'} data-cursor>
+            <span className="eq" aria-hidden="true"><i /><i /><i /></span>
+            <Roll>{sound ? 'Som' : 'Mudo'}</Roll>
+          </button>
+          <a className="chip chip--solid" href={profile.github} target="_blank" rel="noopener noreferrer" data-cursor>
+            <GitHubIcon /> <Roll>GitHub</Roll>
+          </a>
+        </div>
       </header>
-      <div className="hud hud--bottom mono">
+      <div className="hud hud--bottom" aria-hidden="true">
         <span className="hud__chapter">
           <b>{String(chapter + 1).padStart(2, '0')}</b> <span key={chapter} className="hud__flip">{CHAPTERS[chapter].label}</span>
         </span>
-        <span className="hud__right">
-          <button className={`hud__btn hud__sound${sound ? ' is-on' : ''}`} onClick={onSound} aria-pressed={sound} data-cursor>
-            <span className="eq" aria-hidden="true"><i /><i /><i /></span> {sound ? 'Som ligado' : 'Som desligado'}
-          </button>
-          <span>{Math.round(progress * 100)}%</span>
+        <span className="hud__prog">
+          <i style={{ transform: `scaleX(${progress})` }} />
         </span>
-      </div>
-      <div className="hud__rail" aria-hidden="true">
-        <i style={{ transform: `scaleY(${progress})` }} />
       </div>
     </>
   );
