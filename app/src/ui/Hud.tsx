@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { gsap } from '../lib/motion';
 import { Brand, Arrow, GitHubIcon } from '../components/Logo';
 import { profile, projects, type Project } from '../data/content';
-import { CHAPTERS } from './Chapters';
 
 const NAV = [
   { id: 'hero', label: 'Início', ch: 0 },
@@ -20,7 +19,7 @@ export function Roll({ children }: { children: string }) {
   );
 }
 
-export function Hud({ chapter, progress, onNav, sound, onSound }: { chapter: number; progress: number; onNav: (id: string) => void; sound: boolean; onSound: () => void }) {
+export function Hud({ chapter, onNav, sound, onSound }: { chapter: number; progress?: number; onNav: (id: string) => void; sound: boolean; onSound: () => void }) {
   const nav = useRef<HTMLElement>(null);
   const hl = useRef<HTMLSpanElement>(null);
   const active = NAV.reduce((acc, n, i) => (chapter >= n.ch ? i : acc), 0);
@@ -60,14 +59,6 @@ export function Hud({ chapter, progress, onNav, sound, onSound }: { chapter: num
           </a>
         </div>
       </header>
-      <div className={`hud hud--bottom${chapter === 0 ? ' is-quiet' : ''}`} aria-hidden="true">
-        <span className="hud__chapter">
-          <b>{String(chapter + 1).padStart(2, '0')}</b> <span key={chapter} className="hud__flip">{CHAPTERS[chapter].label}</span>
-        </span>
-        <span className="hud__prog">
-          <i style={{ transform: `scaleX(${progress})` }} />
-        </span>
-      </div>
     </>
   );
 }

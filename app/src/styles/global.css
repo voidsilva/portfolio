@@ -1722,3 +1722,7 @@ button:focus-visible .roll::after {
 .manifesto__line {
   text-shadow: 0 2px 40px rgba(8, 9, 13, 0.6);
 }
+
+.stackx {
+  grid-template-columns: 1fr;
+}

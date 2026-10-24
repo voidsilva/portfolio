@@ -30,7 +30,6 @@ function Chars({ text }: { text: string }) {
 
 export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; images: string[] }) {
   const [active, setActive] = useState<string | null>(null);
-  const used = active ? stack.find((s) => s.name === active)?.used ?? [] : [];
 
   return (
     <main className="track" id="conteudo">
@@ -85,10 +84,6 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
                   </button>
                 </div>
               </div>
-              <span className="proj__count" aria-hidden="true">
-                {p.index}
-                <small>/{String(projects.length).padStart(2, '0')}</small>
-              </span>
               <div className="proj__lite">
                 <img src={images[i]} alt={p.preview.kind === 'image' ? p.preview.alt : `Ilustração de ${p.name}`} loading="lazy" />
               </div>
@@ -121,16 +116,6 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
             Sou Paulo, desenvolvedor full stack. Escrevo sistemas para <em>operações reais</em>: estoque, pedidos, financeiro,
             acesso de usuários.
           </p>
-          <div className="about__cols">
-            <p>
-              Os projetos mais recentes no meu GitHub são ERPs internos, com autenticação, papéis de acesso, validação de dados e
-              integrações com ferramentas que a empresa já usa, como Tray, Tiny e Supabase.
-            </p>
-            <p>
-              Quando quero entender algo a fundo, construo sem framework: a API de tarefas roda em TypeScript nativo no Node 22,
-              sem nenhuma dependência. No front, comecei com HTML, CSS e JavaScript puros e hoje uso React.
-            </p>
-          </div>
           <div className="about__facts mono">
             <span><b>{profile.publicRepos}</b> repositórios públicos</span>
             <span><b>{profile.since}</b> no GitHub desde</span>
@@ -161,16 +146,6 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
               </button>
             ))}
           </div>
-          <div className="stackx__map mono" aria-live="polite">
-            <p>{active ? `${active} aparece em:` : 'Passe o cursor numa tecnologia. O número é a contagem de projetos, não um nível.'}</p>
-            <ul>
-              {projects.map((p) => (
-                <li key={p.id} className={used.includes(p.index) ? 'on' : active ? 'off' : ''}>
-                  <b>{p.index}</b> {p.name}
-                </li>
-              ))}
-            </ul>
-          </div>
         </div>
       </section>
 
@@ -181,7 +156,6 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
             <span className="mask"><span>Vamos construir</span></span>
             <span className="mask"><span className="thin">o próximo?</span></span>
           </h2>
-          <p>Os projetos, o código e o histórico estão no GitHub. Para falar comigo, comece por lá.</p>
           <a className="cta cta--big" href={profile.github} target="_blank" rel="noopener noreferrer" data-cursor>
             <GitHubIcon /> <Roll>{`github.com/${profile.handle}`}</Roll>
             <span className="cta__dot" aria-hidden="true">

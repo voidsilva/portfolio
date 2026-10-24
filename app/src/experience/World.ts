@@ -61,7 +61,7 @@ const PURPLE = new THREE.Color('#9d8cf0');
 const CYAN = new THREE.Color('#8fd3df');
 // Paleta noturna e calma: azul-ardósia com toques de lavanda.
 const HORIZON_TINT = new THREE.Color(0.055, 0.046, 0.1);
-const FOGS = ['#0a0d14', '#0c1019', '#0b1318', '#13132a', '#0a0c12'].map((c) => new THREE.Color(c));
+const FOGS = ['#0b0e18', '#0b0e18', '#0b0e18', '#0b0e18', '#0b0e18'].map((c) => new THREE.Color(c));
 
 export const CORE_Z = -400;
 export const SLOTS = Array.from({ length: projects.length }, (_, i) => {
@@ -338,55 +338,103 @@ export class World {
       uniforms: {
         uFog: { value: new THREE.Color() },
         uTime: { value: 0 },
-        uMoon: { value: new THREE.Vector3(-0.55, 0.32, -0.77).normalize() },
+        uMoon: { value: new THREE.Vector3(-0.3, 0.2, -0.93).normalize() },
       },
       vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uFog; uniform float uTime; uniform vec3 uMoon; varying vec3 vDir;
         float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float noise(float x){ float i = floor(x); float f = fract(x); return mix(hash(vec2(i, 0.0)), hash(vec2(i + 1.0, 0.0)), smoothstep(0.0, 1.0, f)); }
-        float ridge(float a, float s){ float h = 0.0; float amp = 0.5; for (int i = 0; i < 5; i++){ h += noise(a * s) * amp; s *= 2.1; amp *= 0.5; } return h; }
+        float n1(float x, float s){ float i = floor(x); float f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(hash(vec2(i, s)), hash(vec2(i + 1.0, s)), f); }
+        float n2(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+        float fbm2(vec2 p){ float v = 0.0; float a = 0.5; for (int i = 0; i < 5; i++){ v += n2(p) * a; p *= 2.07; a *= 0.5; } return v; }
+        // silhueta de montanha com cristas (ridged fbm): picos recortados e encostas suaves
+        float mountain(float a, float freq, float seed){
+          float h = 0.0; float w = 0.55; float s = freq;
+          for (int i = 0; i < 7; i++){ float n = 1.0 - abs(n1(a * s, seed + float(i)) * 2.0 - 1.0); h += n * n * w; s *= 2.03; w *= 0.48; }
+          return h;
+        }
         void main(){
           vec3 d = normalize(vDir);
           float y = d.y;
-          vec3 zenith = uFog * 0.35 + vec3(0.01, 0.012, 0.03);
-          vec3 horizon = uFog * 1.6 + vec3(0.06, 0.05, 0.11);
-          vec3 col = mix(horizon, zenith, smoothstep(-0.02, 0.55, y));
-          // brilho suave no horizonte
-          col += vec3(0.16, 0.12, 0.26) * exp(-abs(y) * 14.0) * 0.6;
-          // estrelas
-          vec2 sp = vec2(atan(d.z, d.x) * 140.0, asin(clamp(y, -1.0, 1.0)) * 140.0);
+          vec3 zenith = uFog * 0.3 + vec3(0.008, 0.01, 0.026);
+          vec3 horizon = uFog * 1.5 + vec3(0.07, 0.065, 0.13);
+          vec3 col = mix(horizon, zenith, smoothstep(-0.02, 0.6, y));
+          float az = atan(d.z, d.x) + 3.14159;
+          // luar espalhado no céu, mais forte perto da lua
+          float m = dot(d, uMoon);
+          col += vec3(0.2, 0.2, 0.34) * pow(max(m, 0.0), 6.0) * 0.35;
+          // estrelas (menos perto da lua e do horizonte)
+          vec2 sp = vec2(az * 150.0, asin(clamp(y, -1.0, 1.0)) * 150.0);
           vec2 cell = floor(sp);
           float h = hash(cell);
-          float star = step(0.9965, h) * smoothstep(0.5, 0.0, length(fract(sp) - 0.5));
-          star *= 0.6 + 0.4 * sin(uTime * (1.0 + h * 3.0) + h * 40.0);
-          col += vec3(0.85, 0.88, 1.0) * star * smoothstep(0.05, 0.35, y);
-          // estrela cadente: a cada 7s uma risca atravessa o céu
-          float cyc = floor(uTime / 7.0);
-          float ph = fract(uTime / 7.0) / 0.12;
+          float star = step(0.9968, h) * smoothstep(0.45, 0.0, length(fract(sp) - 0.5));
+          star *= (0.55 + 0.45 * sin(uTime * (1.0 + h * 3.0) + h * 40.0)) * (1.0 - pow(max(m, 0.0), 40.0));
+          col += vec3(0.85, 0.88, 1.0) * star * smoothstep(0.06, 0.4, y);
+          // estrela cadente
+          float cyc = floor(uTime / 9.0);
+          float ph = fract(uTime / 9.0) / 0.1;
           if (ph < 1.0) {
             vec2 sky = vec2(atan(d.z, d.x), asin(clamp(d.y, -1.0, 1.0)));
             float r1 = fract(sin(cyc * 12.9898) * 43758.5453);
             float r2 = fract(sin(cyc * 78.233) * 12345.678);
-            vec2 a0 = vec2(-2.4 + r1 * 1.6, 0.45 + r2 * 0.35);
-            vec2 a1 = a0 + vec2(0.55, -0.22);
+            vec2 a0 = vec2(-2.3 + r1 * 1.4, 0.5 + r2 * 0.3);
+            vec2 a1 = a0 + vec2(0.5, -0.2);
             vec2 head = mix(a0, a1, ph);
             vec2 tail = mix(a0, a1, max(ph - 0.35, 0.0));
             vec2 pa = sky - tail, ba = head - tail;
             float hh = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-5), 0.0, 1.0);
-            float dist = length(pa - ba * hh);
-            col += vec3(0.95, 0.92, 1.0) * smoothstep(0.004, 0.0, dist) * hh * sin(ph * 3.14159) * 1.6;
+            col += vec3(0.95, 0.92, 1.0) * smoothstep(0.003, 0.0, length(pa - ba * hh)) * hh * sin(ph * 3.14159) * 1.4;
           }
-          // lua
-          float m = dot(d, uMoon);
-          col += vec3(0.86, 0.88, 0.98) * smoothstep(0.9993, 0.9996, m);
-          col += vec3(0.5, 0.48, 0.75) * pow(max(m, 0.0), 400.0) * 0.6 + vec3(0.25, 0.22, 0.4) * pow(max(m, 0.0), 30.0) * 0.25;
-          // montanhas: duas camadas, a de trás mais clara (perspectiva atmosférica)
-          float az = atan(d.z, d.x) + 3.14159;
-          float far = 0.035 + ridge(az, 3.0) * 0.07;
-          float near = 0.01 + ridge(az + 11.0, 5.0) * 0.05;
-          col = mix(col, horizon * 0.62, step(y, far) * smoothstep(-0.05, 0.0, y));
-          col = mix(col, horizon * 0.38, step(y, near) * smoothstep(-0.05, 0.0, y));
+          // lua: disco com mares escuros, crateras, borda mais escura e halo
+          vec3 right = normalize(cross(uMoon, vec3(0.0, 1.0, 0.0)));
+          vec3 up = cross(right, uMoon);
+          float R = 0.036;
+          vec2 lp = vec2(dot(d, right), dot(d, up)) / R;
+          float r = length(lp);
+          if (m > 0.0) {
+            float limb = sqrt(max(0.0, 1.0 - r * r));
+            float maria = smoothstep(0.42, 0.68, fbm2(lp * 1.6 + 3.0));
+            vec2 cp = lp * 5.0; vec2 ci = floor(cp);
+            float crater = 0.0;
+            for (int k = 0; k < 4; k++){
+              vec2 o = vec2(float(k % 2), float(k / 2));
+              vec2 c = ci + o + vec2(hash(ci + o), hash(ci + o + 7.0)) - 0.5;
+              float cr = 0.12 + hash(ci + o + 3.0) * 0.22;
+              float dd = length(cp - c);
+              crater += (smoothstep(cr, cr * 0.7, dd) * 0.5 - smoothstep(cr * 1.15, cr, dd) * smoothstep(cr * 0.85, cr, dd) * 0.35) * step(0.55, hash(ci + o + 11.0));
+            }
+            vec3 moon = vec3(0.93, 0.93, 0.98) * (0.62 + 0.38 * pow(limb, 0.5)) * (1.0 - maria * 0.45) * (1.0 - crater * 0.4) + fbm2(lp * 9.0) * 0.06;
+            col = mix(col, moon * 0.5, smoothstep(1.0, 0.96, r));
+            float hal = max(r - 1.0, 0.0);
+            col += vec3(0.62, 0.62, 0.85) * exp(-hal * 2.2) * 0.22 * step(1.0, r);
+            col += vec3(0.32, 0.3, 0.55) * exp(-hal * 0.35) * 0.08;
+          }
+          // montanhas em três camadas, com névoa entre elas e borda iluminada pela lua
+          float moonAz = atan(uMoon.z, uMoon.x) + 3.14159;
+          float lit = 0.5 + 0.5 * cos(az - moonAz);
+          float far = 0.03 + mountain(az, 2.2, 3.0) * 0.13;
+          float mid = 0.012 + mountain(az + 7.0, 3.4, 17.0) * 0.085;
+          float near = -0.004 + mountain(az + 19.0, 5.2, 41.0) * 0.05;
+          vec3 farCol = mix(horizon * 0.82, vec3(0.32, 0.34, 0.5), 0.25);
+          vec3 midCol = horizon * 0.5 + vec3(0.0, 0.004, 0.012);
+          vec3 nearCol = horizon * 0.27;
+          float fade = smoothstep(-0.06, 0.0, y);
+          // camada distante, com topos claros (neve sob a lua)
+          float inFar = step(y, far) * fade;
+          float snow = smoothstep(far - 0.022, far - 0.002, y) * smoothstep(0.08, 0.13, far) * lit;
+          col = mix(col, farCol + vec3(0.14, 0.14, 0.2) * snow, inFar);
+          // névoa subindo do lago entre as camadas
+          col = mix(col, horizon * 0.95, smoothstep(0.05, 0.0, y) * 0.35 * fade);
+          // camada do meio, com borda iluminada
+          float inMid = step(y, mid) * fade;
+          float rimM = smoothstep(0.006, 0.0, mid - y) * lit;
+          col = mix(col, midCol + vec3(0.12, 0.12, 0.2) * rimM, inMid);
+          col = mix(col, horizon * 0.8, smoothstep(0.025, 0.0, y) * 0.3 * fade);
+          // camada próxima, mais escura e recortada
+          float inNear = step(y, near) * fade;
+          float rimN = smoothstep(0.004, 0.0, near - y) * lit;
+          col = mix(col, nearCol + vec3(0.1, 0.1, 0.18) * rimN, inNear);
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -463,7 +511,8 @@ export class World {
       dome = new THREE.Mesh(new THREE.SphereGeometry(180, 64, 32), domeMat);
       dome.renderOrder = 0;
       dome.frustumCulled = false;
-      this.scene.add(dome);
+      // o domo da foto não é mais desenhado: o céu procedural (montanhas e lua) vale para todas as seções
+      dome.visible = false;
       // a névoa da margem usa a cor média do horizonte da foto
       const img = tex.image as unknown as { data: Uint16Array | Float32Array; width: number; height: number };
       const row = Math.floor(img.height * 0.5);
@@ -475,7 +524,7 @@ export class World {
       }
       const n = img.width / 4;
       const h = acc.map((v, c) => (v / n) * [0.085, 0.095, 0.18][c]);
-      FOGS[0].setRGB(Math.max(0, (h[0] - HORIZON_TINT.r) / 1.6), Math.max(0, (h[1] - HORIZON_TINT.g) / 1.6), Math.max(0, (h[2] - HORIZON_TINT.b) / 1.6), THREE.LinearSRGBColorSpace);
+      void h;
     }
 
     // A pedra da margem: rocha procedural, achatada em cima, metade dentro d'água.
@@ -628,7 +677,7 @@ export class World {
     );
     word.position.set(1.5, 3.2, -24);
     word.renderOrder = 2; // desenha depois do céu (que é transparente e fica no plano de fundo)
-    group.add(word);
+    void group; // a palavra gigante saiu (menos elementos soltos)
     this.disposables.push(wtex);
     this.updaters.push((t) => {
       word.position.y = 3.2 + Math.sin(t * 0.4) * 0.08;
@@ -892,7 +941,8 @@ export class World {
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: PURPLE, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending }));
       glow.scale.set(16, 11, 1);
       glow.position.z = -1.2;
-      g.add(glow, frame, screen, edges, num);
+      g.add(glow, frame, screen, edges);
+      void num;
       this.scene.add(g);
       const baseY = slot.y;
       this.updaters.push((t) => {
@@ -1228,7 +1278,10 @@ export class World {
     if (this.bloom) this.bloom.strength = 0.38 + s.glitch * 0.4;
 
     // o espelho só é renderizado enquanto está perto da câmera
-    if (this.reflector) this.reflector.visible = s.pz > -175;
+    if (this.reflector) {
+      this.reflector.position.x = this.camera.position.x;
+      this.reflector.position.z = this.camera.position.z - 100;
+    }
     this.corridor.forEach((o) => (o.visible = s.pz < 4 && s.pz > -240));
 
     this.tmpV.copy(this.camera.position);
