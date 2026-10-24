@@ -48,7 +48,7 @@ export default function App() {
     const bump = () => alive && setLoad((steps.fonts + steps.three + steps.tex) / 3);
 
     const fonts = Promise.all(
-      ['500 40px "Space Grotesk"', '400 16px Manrope', '500 14px "JetBrains Mono"'].map((f) => document.fonts.load(f).catch(() => null)),
+      ['600 40px Montserrat', '800 40px Montserrat', '400 16px Manrope', '500 14px "JetBrains Mono"'].map((f) => document.fonts.load(f).catch(() => null)),
     ).then(() => {
       steps.fonts = 1;
       bump();

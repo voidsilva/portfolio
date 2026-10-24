@@ -34,7 +34,7 @@ export function erpTexture() {
   g.moveTo(250, 0);
   g.lineTo(250, H);
   g.stroke();
-  g.font = '600 22px "Space Grotesk", sans-serif';
+  g.font = '600 22px Montserrat, sans-serif';
   g.fillStyle = '#F4F5FA';
   g.fillText('Belaways', 34, 58);
   g.fillStyle = '#8B5CF6';
@@ -185,7 +185,7 @@ export function numberTexture(n: string) {
   c.width = 512;
   c.height = 512;
   const g = c.getContext('2d')!;
-  g.font = '500 380px "Space Grotesk", sans-serif';
+  g.font = '500 380px Montserrat, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.lineWidth = 3;

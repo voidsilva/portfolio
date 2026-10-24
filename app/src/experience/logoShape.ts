@@ -10,7 +10,14 @@ export interface LogoSpec {
   dots: { cx: number; cy: number; r: number }[];
 }
 
-export const LOGOS: Record<'monolinha' | 'monograma' | 'minusculas', LogoSpec> = {
+export const LOGOS: Record<'silvadev' | 'monolinha' | 'monograma' | 'minusculas', LogoSpec> = {
+  silvadev: {
+    strokes: [
+      { d: 'M33 18H19a7 7 0 0 0 0 14h8a7 7 0 0 1 0 14H11', w: 8, tone: 'white' },
+      { d: 'M36 12h1a20 20 0 0 1 0 40h-1', w: 8, tone: 'purple' },
+    ],
+    dots: [{ cx: 27, cy: 7.5, r: 3.4 }],
+  },
   monolinha: {
     strokes: [
       { d: 'M27 17H15.5a7.5 7.5 0 0 0 0 15h3a7.5 7.5 0 0 1 0 15H7', w: 5.5, tone: 'white' },
@@ -35,7 +42,7 @@ export const LOGOS: Record<'monolinha' | 'monograma' | 'minusculas', LogoSpec> =
   },
 };
 
-export const LOGO = LOGOS.monolinha;
+export const LOGO = LOGOS.silvadev;
 export const TONES: Record<Tone, string> = { white: '#F4F5FA', purple: '#8B5CF6', cyan: '#55D6FF' };
 
 /** Converte para coordenadas do mundo: centralizado em x, base (y=54) em 0. */

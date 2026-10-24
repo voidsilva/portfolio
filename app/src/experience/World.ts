@@ -274,22 +274,16 @@ export class World {
     const group = new THREE.Group();
     const scale = 0.19;
     const tint = { white: new THREE.Color('#F4F5FA'), purple: PURPLE };
+    // Metal polido: prata no S, roxo anodizado no D.
     const glass = (tone: 'white' | 'purple') =>
-      this.high
-        ? new THREE.MeshPhysicalMaterial({
-            color: tone === 'white' ? '#dfe3f5' : '#cdbcff',
-            metalness: 0,
-            roughness: 0.06,
-            transmission: 1,
-            thickness: 0.9,
-            ior: 1.45,
-            iridescence: 0.7,
-            iridescenceIOR: 1.3,
-            clearcoat: 1,
-            clearcoatRoughness: 0.05,
-            envMapIntensity: 1.4,
-          })
-        : new THREE.MeshStandardMaterial({ color: '#1a1c26', metalness: 0.9, roughness: 0.2, transparent: true, opacity: 0.35 });
+      new THREE.MeshPhysicalMaterial({
+        color: tone === 'white' ? '#e9ebf3' : '#7b4ff0',
+        metalness: 1,
+        roughness: tone === 'white' ? 0.16 : 0.22,
+        clearcoat: 1,
+        clearcoatRoughness: 0.08,
+        envMapIntensity: tone === 'white' ? 1.6 : 1.3,
+      });
 
     // A marca: tubos de vidro com um filamento de neon dentro.
     const drawn: { geo: THREE.BufferGeometry; total: number }[] = [];
@@ -308,13 +302,15 @@ export class World {
       const outer = new THREE.TubeGeometry(curve, segs, r, 28, closed);
       const core = new THREE.TubeGeometry(curve, segs, r * 0.28, 10, closed);
       const neon = new THREE.MeshBasicMaterial({ color: tint[st.tone].clone().multiplyScalar(st.tone === 'white' ? 1.15 : 2.4), toneMapped: false });
-      group.add(new THREE.Mesh(outer, glass(st.tone)), new THREE.Mesh(core, neon));
-      drawn.push({ geo: outer, total: outer.index!.count }, { geo: core, total: core.index!.count });
+      group.add(new THREE.Mesh(outer, glass(st.tone)));
+      void neon;
+      drawn.push({ geo: outer, total: outer.index!.count });
+      core.dispose();
       if (!closed) {
         [v[0], v[v.length - 1]].forEach((p) => {
           const g = new THREE.Group();
           g.position.copy(p);
-          g.add(new THREE.Mesh(new THREE.SphereGeometry(r, 28, 18), glass(st.tone)), new THREE.Mesh(new THREE.SphereGeometry(r * 0.28, 12, 8), neon));
+          g.add(new THREE.Mesh(new THREE.SphereGeometry(r, 28, 18), glass(st.tone)));
           group.add(g);
           caps.push(g);
         });
@@ -377,7 +373,7 @@ export class World {
           float x = 1.0 - abs(vUv.x - 0.5) * 2.0;
           float fall = smoothstep(0.0, 0.45, vUv.y) * smoothstep(1.0, 0.55, vUv.y);
           float flicker = 0.75 + 0.25 * sin(uTime * 0.7 + vW.x * 2.0) * sin(uTime * 0.43 + vW.z);
-          float a = pow(x, 2.5) * fall * flicker * 0.16 * uI;
+          float a = pow(x, 2.5) * fall * flicker * 0.09 * uI;
           gl_FragColor = vec4(uColor, a);
         }`,
     });
@@ -444,7 +440,7 @@ export class World {
       const k = intro;
       ringMat.uniforms.uTime.value = t;
       ringMat.uniforms.uIntro.value = THREE.MathUtils.smoothstep(k, 0.2, 0.9) * 1.02;
-      corona.material.opacity = 0.28 * THREE.MathUtils.smoothstep(k, 0.5, 1);
+      corona.material.opacity = 0.14 * THREE.MathUtils.smoothstep(k, 0.5, 1);
       beamMat.uniforms.uTime.value = t;
       beamMat.uniforms.uI.value = THREE.MathUtils.smoothstep(k, 0.6, 1);
       portal.rotation.z = Math.sin(t * 0.1) * 0.05;

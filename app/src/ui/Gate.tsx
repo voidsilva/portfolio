@@ -26,7 +26,8 @@ export function Gate({ progress, ready, suggestLite, onEnter }: { progress: numb
     <div className="gate" ref={root} role="dialog" aria-modal="true" aria-label="Entrada do portfólio SilvaDev">
       <div className="gate__inner">
         <LogoMark className="gate__logo" />
-        <p className="gate__tag">SilvaDev · Paulo Silva</p>
+        <p className="gate__word">Silva<b>Dev</b></p>
+        <p className="gate__tag">Ideias · Código · Resultados</p>
         {!ready ? (
           <div className="gate__load" aria-live="polite">
             <span>Carregando</span>
