@@ -6,7 +6,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { LOGO_DOT, logoShapes, sampleLogo, toWorld } from './logoShape';
+import { LOGO, pathPoints, sampleLogo, toWorld } from './logoShape';
 import { haloTexture, numberTexture } from './textures';
 
 /**
@@ -201,30 +201,43 @@ export class World {
   private buildMonolith() {
     const group = new THREE.Group();
     const scale = 0.19;
-    const metal = new THREE.MeshStandardMaterial({ color: '#15171f', metalness: 0.95, roughness: 0.28, envMapIntensity: 0.4 });
-    const edgeMat = new THREE.LineBasicMaterial({ color: PURPLE, transparent: true, opacity: 0.55 });
-    logoShapes(scale).forEach(({ name, shape }) => {
-      const geo = new THREE.ExtrudeGeometry(shape, { depth: 1.8, bevelEnabled: true, bevelThickness: 0.12, bevelSize: 0.1, bevelSegments: 2 });
-      geo.translate(0, 0, -0.9);
-      const mesh = new THREE.Mesh(geo, metal);
-      group.add(mesh);
-      group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), edgeMat));
-      void name;
+    const mats = {
+      white: new THREE.MeshStandardMaterial({ color: '#1b1d26', metalness: 1, roughness: 0.22, envMapIntensity: 0.7 }),
+      purple: new THREE.MeshStandardMaterial({ color: '#2b1f52', metalness: 0.85, roughness: 0.25, envMapIntensity: 0.5, emissive: PURPLE, emissiveIntensity: 0.28 }),
+    };
+    // A marca em escala arquitetônica: cada traço vira um tubo de metal.
+    LOGO.strokes.forEach((st) => {
+      const { pts, closed } = pathPoints(st.d, 0.35);
+      const v = pts.map(([x, y]) => {
+        const w = toWorld(x, y, scale);
+        return new THREE.Vector3(w.x, w.y, 0);
+      });
+      const curve = new PolyCurve(v);
+      const r = (st.w / 2) * scale;
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, v.length * 2, r, 20, closed), mats[st.tone]);
+      group.add(tube);
+      if (!closed) {
+        [v[0], v[v.length - 1]].forEach((p) => {
+          const cap = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), mats[st.tone]);
+          cap.position.copy(p);
+          group.add(cap);
+        });
+      }
     });
-    // O "nêutron": o quadrado ciano da marca, aceso e flutuando.
-    const [dx, dy, dw] = LOGO_DOT;
-    const p = toWorld(dx + dw / 2, dy + dw / 2, scale);
-    const dot = new THREE.Mesh(
-      new THREE.BoxGeometry(dw * scale, dw * scale, dw * scale),
-      new THREE.MeshStandardMaterial({ color: CYAN, emissive: CYAN, emissiveIntensity: 0.9 }),
-    );
-    dot.position.set(p.x, p.y + 0.6, 0);
-    group.add(dot);
-    const dotLight = new THREE.PointLight(CYAN, 18, 14, 1.8);
-    dotLight.position.copy(dot.position);
-    group.add(dotLight);
+    // O ponto ciano da marca: uma esfera acesa que flutua.
+    const dots = LOGO.dots.map((d) => {
+      const w = toWorld(d.cx, d.cy, scale);
+      const m = new THREE.Mesh(
+        new THREE.SphereGeometry(d.r * scale, 32, 20),
+        new THREE.MeshStandardMaterial({ color: CYAN, emissive: CYAN, emissiveIntensity: 1.1 }),
+      );
+      m.position.set(w.x, w.y + 0.4, 0);
+      const light = new THREE.PointLight(CYAN, 16, 14, 1.8);
+      light.position.copy(m.position);
+      group.add(m, light);
+      return { m, light, y: m.position.y };
+    });
 
-    // Anel de luz no chão.
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(7.6, 7.66, 160),
       new THREE.MeshBasicMaterial({ color: PURPLE, transparent: true, opacity: 0.9, side: THREE.DoubleSide, toneMapped: false }),
@@ -237,19 +250,21 @@ export class World {
     key.position.set(-9, 16, 12);
     key.target.position.set(0, 4, 0);
     group.add(key, key.target);
-    const fill = new THREE.PointLight('#c9c4ff', 30, 30, 1.6);
+    const fill = new THREE.PointLight('#c9c4ff', 34, 30, 1.6);
     fill.position.set(8, 6, 10);
     group.add(fill);
     const back = new THREE.PointLight(CYAN, 20, 22, 1.6);
     back.position.set(4, 3, -6);
     group.add(back);
+    group.position.y = 0.6;
 
     this.scene.add(group);
     this.updaters.push((t) => {
-      dot.rotation.set(t * 0.6, t * 0.8, 0);
-      dot.position.y = p.y + 0.6 + Math.sin(t * 1.4) * 0.25;
-      dotLight.position.y = dot.position.y;
-      group.rotation.y = Math.sin(t * 0.15) * 0.08;
+      dots.forEach((d, i) => {
+        d.m.position.y = d.y + Math.sin(t * 1.4 + i) * 0.25;
+        d.light.position.y = d.m.position.y;
+      });
+      group.rotation.y = Math.sin(t * 0.2) * 0.12;
     });
   }
 
@@ -380,7 +395,7 @@ export class World {
     const R = new Float32Array(count);
     const T = new Float32Array(count);
     const rand = mulberry(42);
-    const logo = sampleLogo(count, rand);
+    const logo = sampleLogo(LOGO, count, rand);
     const ls = 0.27;
     for (let i = 0; i < count; i++) {
       // A: esfera (casca + volume)
@@ -404,11 +419,11 @@ export class World {
         B.set([v.x, v.y, v.z], i * 3);
       }
       // C: a marca NX
-      const [lx, ly, isDot] = logo[i % logo.length];
+      const [lx, ly, tone] = logo[i % logo.length];
       const w = toWorld(lx, ly, ls);
       C.set([w.x, w.y - 5.9, (rand() - 0.5) * 0.7], i * 3);
       R[i] = rand();
-      T[i] = isDot ? 2 : rand() < 0.3 ? 1 : 0;
+      T[i] = tone === 'cyan' ? 2 : tone === 'white' ? 1 : rand() < 0.12 ? 1 : 0;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(A, 3));
@@ -654,4 +669,16 @@ function mulberry(seed: number) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** Curva que segue uma polilinha (preserva cantos e arcos do SVG). */
+class PolyCurve extends THREE.Curve<THREE.Vector3> {
+  constructor(private pts: THREE.Vector3[]) {
+    super();
+  }
+  getPoint(t: number, target = new THREE.Vector3()) {
+    const f = t * (this.pts.length - 1);
+    const i = Math.min(Math.floor(f), this.pts.length - 2);
+    return target.copy(this.pts[i]).lerp(this.pts[i + 1], f - i);
+  }
 }

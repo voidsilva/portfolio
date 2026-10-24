@@ -1,77 +1,101 @@
 import * as THREE from 'three';
 
-type Pt = [number, number];
-
 /**
- * Marca SilvaDev (SD) no espaço do SVG (viewBox 64×64, y para baixo).
- * Um S de blocos e um D com cantos chanfrados; o quadrado ciano é o acento.
- * Usada no SVG, no monólito extrudado e nas partículas.
+ * A marca SilvaDev é definida uma única vez, como traços de SVG (viewBox 64×64).
+ * Dela saem o logo da interface, o favicon, o monólito 3D (tubos) e as partículas.
  */
-export const LOGO_POLYS: { name: 'S' | 'D'; pts: Pt[]; hole?: Pt[] }[] = [
-  {
-    name: 'S',
-    pts: [[4, 10], [30, 10], [30, 18], [12, 18], [12, 28], [30, 28], [30, 54], [4, 54], [4, 46], [22, 46], [22, 36], [4, 36]],
-  },
-  {
-    name: 'D',
-    pts: [[34, 10], [50, 10], [60, 20], [60, 44], [50, 54], [34, 54]],
-    hole: [[42, 18], [47, 18], [52, 23], [52, 41], [47, 46], [42, 46]],
-  },
-];
-export const LOGO_DOT: [number, number, number, number] = [55, 2, 6, 6];
+export type Tone = 'white' | 'purple' | 'cyan';
+export interface LogoSpec {
+  strokes: { d: string; w: number; tone: Exclude<Tone, 'cyan'> }[];
+  dots: { cx: number; cy: number; r: number }[];
+}
 
-export const LOGO_PATHS = LOGO_POLYS.map((p) => {
-  const d = (pts: Pt[]) => 'M' + pts.map(([x, y]) => `${x} ${y}`).join('L') + 'Z';
-  return d(p.pts) + (p.hole ? d(p.hole) : '');
-});
+export const LOGOS: Record<'monolinha' | 'monograma' | 'minusculas', LogoSpec> = {
+  monolinha: {
+    strokes: [
+      { d: 'M27 17H15.5a7.5 7.5 0 0 0 0 15h3a7.5 7.5 0 0 1 0 15H7', w: 5.5, tone: 'white' },
+      { d: 'M36 17v30h8a15 15 0 0 0 0-30z', w: 5.5, tone: 'purple' },
+    ],
+    dots: [{ cx: 57, cy: 10, r: 3.2 }],
+  },
+  monograma: {
+    strokes: [
+      { d: 'M12 10v44h20a22 22 0 0 0 0-44z', w: 5.5, tone: 'purple' },
+      { d: 'M39 22H28.5a5 5 0 0 0 0 10h3a5 5 0 0 1 0 10H21', w: 5, tone: 'white' },
+    ],
+    dots: [{ cx: 54, cy: 10, r: 3 }],
+  },
+  minusculas: {
+    strokes: [
+      { d: 'M27 27h-9a5 5 0 0 0 0 10h3a5 5 0 0 1 0 10H10', w: 6.5, tone: 'white' },
+      { d: 'M53 37a10 10 0 1 1 0-0.01', w: 6.5, tone: 'purple' },
+      { d: 'M53 14v33', w: 6.5, tone: 'purple' },
+    ],
+    dots: [{ cx: 20, cy: 14, r: 3.4 }],
+  },
+};
 
-/** Converte para coordenadas do mundo: centralizado em x, base em y=0. */
+export const LOGO = LOGOS.monograma;
+export const TONES: Record<Tone, string> = { white: '#F4F5FA', purple: '#8B5CF6', cyan: '#55D6FF' };
+
+/** Converte para coordenadas do mundo: centralizado em x, base (y=54) em 0. */
 export function toWorld(x: number, y: number, scale: number) {
   return new THREE.Vector2((x - 32) * scale, (54 - y) * scale);
 }
 
-export function logoShapes(scale: number) {
-  const path = (pts: Pt[], target: THREE.Path) => {
-    pts.forEach(([x, y], i) => {
-      const v = toWorld(x, y, scale);
-      if (i === 0) target.moveTo(v.x, v.y);
-      else target.lineTo(v.x, v.y);
-    });
-    target.closePath();
-  };
-  return LOGO_POLYS.map((p) => {
-    const s = new THREE.Shape();
-    path(p.pts, s);
-    if (p.hole) {
-      const h = new THREE.Path();
-      path(p.hole, h);
-      s.holes.push(h);
-    }
-    return { name: p.name, shape: s };
-  });
-}
-
-function inside(pt: Pt, poly: Pt[]) {
-  let c = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, yi] = poly[i];
-    const [xj, yj] = poly[j];
-    if (yi > pt[1] !== yj > pt[1] && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) c = !c;
+/** Pontos ao longo de um traço, usando a geometria de SVG do próprio navegador. */
+export function pathPoints(d: string, step = 0.4) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  svg.appendChild(path);
+  svg.style.cssText = 'position:absolute;width:0;height:0;visibility:hidden';
+  document.body.appendChild(svg);
+  const len = path.getTotalLength();
+  const n = Math.max(2, Math.ceil(len / step));
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= n; i++) {
+    const p = path.getPointAtLength((len * i) / n);
+    pts.push([p.x, p.y]);
   }
-  return c;
+  const closed = /z\s*$/i.test(d.trim());
+  svg.remove();
+  return { pts, closed };
 }
 
-/** Amostra pontos aleatórios dentro da marca (em unidades do SVG). */
-export function sampleLogo(count: number, rand = Math.random) {
-  const out: [number, number, boolean][] = [];
+/** Amostra pontos dentro da marca rasterizando-a num canvas (cada tom num canal). */
+export function sampleLogo(spec: LogoSpec, count: number, rand = Math.random) {
+  const S = 256;
+  const k = S / 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
+  g.scale(k, k);
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.globalCompositeOperation = 'lighter';
+  spec.strokes.forEach((s) => {
+    g.strokeStyle = s.tone === 'white' ? '#ff0000' : '#00ff00';
+    g.lineWidth = s.w;
+    g.stroke(new Path2D(s.d));
+  });
+  g.fillStyle = '#0000ff';
+  spec.dots.forEach((d) => {
+    g.beginPath();
+    g.arc(d.cx, d.cy, d.r, 0, Math.PI * 2);
+    g.fill();
+  });
+  const data = g.getImageData(0, 0, S, S).data;
+  const out: [number, number, Tone][] = [];
   let guard = 0;
-  while (out.length < count && guard++ < count * 40) {
-    const x = 2 + rand() * 60;
-    const y = 0 + rand() * 56;
-    const [dx, dy, dw, dh] = LOGO_DOT;
-    const isDot = x >= dx && x <= dx + dw && y >= dy && y <= dy + dh;
-    const inLetter = LOGO_POLYS.some((p) => inside([x, y], p.pts) && !(p.hole && inside([x, y], p.hole)));
-    if (isDot || inLetter) out.push([x, y, isDot]);
+  while (out.length < count && guard++ < count * 60) {
+    const px = Math.floor(rand() * S);
+    const py = Math.floor(rand() * S);
+    const i = (py * S + px) * 4;
+    const [r, gg, b] = [data[i], data[i + 1], data[i + 2]];
+    if (r + gg + b < 200) continue;
+    const tone: Tone = b > 128 ? 'cyan' : gg > r ? 'purple' : 'white';
+    out.push([(px + rand()) / k, (py + rand()) / k, tone]);
   }
   return out;
 }

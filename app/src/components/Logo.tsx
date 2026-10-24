@@ -1,17 +1,16 @@
-import { LOGO_DOT, LOGO_PATHS } from '../experience/logoShape';
+import { LOGO, TONES } from '../experience/logoShape';
 
-/**
- * Marca SilvaDev: um S de blocos e um D chanfrado, desenhados na mesma grade.
- * O quadrado ciano é o único ponto de cor fria.
- */
+/** Marca SilvaDev, desenhada a partir da mesma definição usada no 3D. */
 export function LogoMark({ mono = false, className, title }: { mono?: boolean; className?: string; title?: string }) {
-  const [dx, dy, dw, dh] = LOGO_DOT;
   return (
-    <svg viewBox="0 0 64 64" className={className} role={title ? 'img' : undefined} aria-hidden={title ? undefined : true}>
+    <svg viewBox="0 0 64 64" className={className} role={title ? 'img' : undefined} aria-hidden={title ? undefined : true} fill="none" strokeLinecap="round" strokeLinejoin="round">
       {title && <title>{title}</title>}
-      <path fill={mono ? 'currentColor' : '#F4F5FA'} d={LOGO_PATHS[0]} />
-      <path fill={mono ? 'currentColor' : '#8B5CF6'} fillRule="evenodd" d={LOGO_PATHS[1]} />
-      <rect fill={mono ? 'currentColor' : '#55D6FF'} x={dx} y={dy} width={dw} height={dh} />
+      {LOGO.strokes.map((s, i) => (
+        <path key={i} d={s.d} stroke={mono ? 'currentColor' : TONES[s.tone]} strokeWidth={s.w} />
+      ))}
+      {LOGO.dots.map((d, i) => (
+        <circle key={i} cx={d.cx} cy={d.cy} r={d.r} fill={mono ? 'currentColor' : TONES.cyan} />
+      ))}
     </svg>
   );
 }
