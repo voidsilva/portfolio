@@ -1783,3 +1783,14 @@ button:focus-visible .roll::after {
     opacity: 0;
   }
 }
+
+/* trabalhos sem repositório público: mesma linha, sem efeito de link */
+.archive a.is-static {
+  cursor: default;
+}
+.archive a.is-static:hover {
+  padding-left: 0;
+}
+.archive a.is-static::before {
+  display: none;
+}

@@ -95,7 +95,7 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
           <ul className="worklist">
             {archive.map((a) => (
               <li key={a.name}>
-                <a href={a.url} target="_blank" rel="noopener noreferrer" data-cursor>
+                <a {...(a.url ? { href: a.url, target: '_blank', rel: 'noopener noreferrer', 'data-cursor': true } : { className: 'is-static' })}>
                   <strong>
                     <Roll>{a.name}</Roll>
                   </strong>

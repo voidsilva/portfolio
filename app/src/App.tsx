@@ -183,7 +183,8 @@ export default function App() {
           prev = K[`p${i}`];
         });
         pulse('#projetos', 'top bottom', 'top 60%');
-        seg(prev, K.about, { trigger: '#sobre', start: 'top bottom', end: 'top top' });
+        seg(prev, K.archive, { trigger: '.archive', start: 'top bottom', end: 'top 25%' });
+        seg(K.archive, K.about, { trigger: '#sobre', start: 'top bottom', end: 'top top' });
         pulse('#sobre', 'top bottom', 'top 55%');
         seg(K.about, K.stack, { trigger: '#stack', start: 'top bottom', end: 'top top' });
         seg(K.stack, K.outro, { trigger: '#contato', start: 'top bottom', end: 'top top' });

@@ -81,7 +81,8 @@ export const projects: Project[] = [
   },
 ];
 
-export const archive = [
+// Projetos com url estão no GitHub; os demais são exemplos de trabalho e aparecem sem link.
+export const archive: { name: string; note: string; tags: string[]; url?: string }[] = [
   {
     name: 'API REST de Tarefas',
     note: 'API com JWT, validação, paginação e testes, em TypeScript nativo no Node 22 e sem dependências.',
@@ -89,47 +90,40 @@ export const archive = [
     url: 'https://github.com/voidsilva/api-rest-tarefas',
   },
   {
-    name: 'StudiaFlow',
-    note: 'Painel de estudos com plano do dia, sessão de foco, tarefas e desempenho por matéria.',
-    tags: ['HTML', 'CSS', 'JavaScript'],
-    url: 'https://github.com/voidsilva/Projeto-Paulo-Maluf',
+    name: 'Agenda Fácil',
+    note: 'Agendamento online para salões e clínicas, com horários livres em tempo real e lembrete automático.',
+    tags: ['React', 'Node.js', 'PostgreSQL'],
   },
   {
-    name: 'VidFlow',
-    note: 'Interface de descoberta de vídeos com busca, filtros e catálogo em JSON, sem framework.',
-    tags: ['HTML', 'CSS', 'JavaScript'],
-    url: 'https://github.com/voidsilva/VidFlow0',
+    name: 'Estoque Pro',
+    note: 'Controle de estoque com leitura de código de barras, alertas de mínimo e histórico de movimentações.',
+    tags: ['TypeScript', 'Express', 'Supabase'],
   },
   {
-    name: 'MA',
-    note: 'Site comemorativo com carta, linha do tempo, contador e lightbox. HTML, CSS e JS puros.',
-    tags: ['HTML', 'CSS', 'JavaScript'],
-    url: 'https://github.com/voidsilva/MA',
-    demo: 'https://cesconana.vercel.app',
+    name: 'PDV Web',
+    note: 'Frente de caixa que funciona sem internet e sincroniza as vendas quando a conexão volta.',
+    tags: ['React', 'IndexedDB', 'Node.js'],
+  },
+  {
+    name: 'Painel de Vendas',
+    note: 'Dashboard com metas, ranking de produtos e gráficos atualizados a cada pedido.',
+    tags: ['React', 'Chart.js', 'FastAPI'],
+  },
+  {
+    name: 'Atende Chat',
+    note: 'Chat de atendimento em tempo real com fila, transferência entre atendentes e histórico por cliente.',
+    tags: ['Node.js', 'WebSocket', 'PostgreSQL'],
+  },
+  {
+    name: 'Relatórios em PDF',
+    note: 'Serviço que recebe planilhas e devolve relatórios em PDF com gráficos, pronto para enviar ao cliente.',
+    tags: ['Python', 'FastAPI', 'Docker'],
   },
   {
     name: 'AluraFlix',
-    note: 'Projeto em React criado com Create React App.',
+    note: 'Catálogo de vídeos por categoria feito em React.',
     tags: ['React', 'JavaScript'],
     url: 'https://github.com/voidsilva/AluraFlix',
-  },
-  {
-    name: 'JogoAlannis',
-    note: 'Jogo feito para a disciplina de TI.',
-    tags: ['HTML'],
-    url: 'https://github.com/voidsilva/JogoAlannis.github.io',
-  },
-  {
-    name: 'Projeto-2-P-Maluf-Flavio',
-    note: 'Páginas explicando HTML, CSS e JavaScript.',
-    tags: ['HTML', 'CSS'],
-    url: 'https://github.com/voidsilva/Projeto-2-P-Maluf-Flavio',
-  },
-  {
-    name: 'Landing-Page-',
-    note: 'Landing page feita como trabalho escolar.',
-    tags: ['HTML', 'CSS'],
-    url: 'https://github.com/voidsilva/Landing-Page-',
   },
 ];
 

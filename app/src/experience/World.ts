@@ -80,6 +80,8 @@ export const KEYS: Record<string, Rig> = {
       { px: s.x * 0.22 - 1.6, py: s.y + 0.4, pz: s.z + 11, lx: s.x - 2.4, ly: s.y + 0.3, lz: s.z, roll: s.x < 0 ? 0.015 : -0.015, fog: 2, glitch: 0, morph: 0, energy: 1 },
     ]),
   ),
+  // "Mais trabalhos": a câmera passa a última placa e olha o lago sob a lua, sem projeto atrás da lista
+  archive: { px: 0, py: 5, pz: -300, lx: -8, ly: 9, lz: -380, roll: 0, fog: 2.5, glitch: 0, morph: 0, energy: 1 },
   about: { px: 0, py: 6, pz: CORE_Z + 17, lx: -3.6, ly: 6, lz: CORE_Z, roll: 0, fog: 3, glitch: 0, morph: 0, energy: 1 },
   stack: { px: 12, py: 12.5, pz: CORE_Z + 13, lx: -5, ly: 6.5, lz: CORE_Z, roll: -0.08, fog: 3.4, glitch: 0, morph: 1, energy: 1.2 },
   outro: { px: 0, py: 1.5, pz: CORE_Z + 40, lx: 0, ly: -0.5, lz: CORE_Z, roll: 0, fog: 4, glitch: 0, morph: 2, energy: 1.4 },
