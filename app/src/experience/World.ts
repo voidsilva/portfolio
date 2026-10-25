@@ -278,7 +278,7 @@ export class World {
             #include <colorspace_fragment>
           }`,
       };
-      const r = new Reflector(new THREE.PlaneGeometry(160, 260), {
+      const r = new Reflector(new THREE.PlaneGeometry(520, 520), {
         textureWidth: Math.round(window.innerWidth * 0.5),
         textureHeight: Math.round(window.innerHeight * 0.5),
         color: new THREE.Color('#9a98b4'),
@@ -300,7 +300,7 @@ export class World {
     }
     // Chão escuro com grade fina; no desktop fica sobre o espelho, translúcido.
     const grid = new THREE.Mesh(
-      new THREE.PlaneGeometry(160, 900),
+      new THREE.PlaneGeometry(520, 520),
       new THREE.ShaderMaterial({
         transparent: true,
         depthWrite: false,
@@ -324,6 +324,9 @@ export class World {
     this.scene.add(grid);
     const gm = grid.material as THREE.ShaderMaterial;
     this.updaters.push(() => {
+      // o chão acompanha a câmera: a borda nunca entra no quadro
+      grid.position.x = this.camera.position.x;
+      grid.position.z = this.camera.position.z;
       gm.uniforms.uFog.value.copy(this.fog.color);
       gm.uniforms.uDensity.value = this.fog.density;
     });
@@ -337,12 +340,13 @@ export class World {
       fog: false,
       uniforms: {
         uFog: { value: new THREE.Color() },
+        uWater: { value: new THREE.Color() },
         uTime: { value: 0 },
         uMoon: { value: new THREE.Vector3(-0.3, 0.2, -0.93).normalize() },
       },
       vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
       fragmentShader: /* glsl */ `
-        uniform vec3 uFog; uniform float uTime; uniform vec3 uMoon; varying vec3 vDir;
+        uniform vec3 uFog; uniform vec3 uWater; uniform float uTime; uniform vec3 uMoon; varying vec3 vDir;
         float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float n1(float x, float s){ float i = floor(x); float f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(hash(vec2(i, s)), hash(vec2(i + 1.0, s)), f); }
         float n2(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -421,6 +425,8 @@ export class World {
           float inNear = step(y, near) * fade;
           float rimN = smoothstep(0.004, 0.0, near - y) * lit;
           col = mix(col, nearCol + vec3(0.04, 0.04, 0.08) * rimN, inNear);
+          // abaixo do horizonte o céu vira a névoa do lago: a água some nele sem borda
+          col = mix(col, uWater, smoothstep(0.0, -0.014, y));
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -489,6 +495,7 @@ export class World {
     this.updaters.push((t) => {
       sky.position.copy(this.camera.position);
       mat.uniforms.uFog.value.copy(this.fogBase);
+      mat.uniforms.uWater.value.copy(this.fog.color);
       mat.uniforms.uTime.value = t;
     });
   }
@@ -900,9 +907,10 @@ export class World {
           float edge = smoothstep(0.0, 0.08, vUv.y) * smoothstep(1.0, 0.9, vUv.y);
           vec3 col = vec3(1.0, 0.56, 0.24) * glow * (0.55 + edge * 0.45) * uI;
           float f = 1.0 - exp(-uDensity * uDensity * vD * vD * 0.5);
-          gl_FragColor = vec4(mix(col, uFog, f), 1.0);
+          gl_FragColor = vec4(mix(col, uFog, f), uI);
         }`,
     });
+    this.lanternMat.transparent = true;
     const lanterns = new THREE.Mesh(inst, this.lanternMat);
     lanterns.frustumCulled = false;
 
@@ -1292,7 +1300,7 @@ export class World {
     this.fog.density = 0.026 + Math.sin(Math.min(f, 3) * Math.PI) * 0.004;
 
     // lanternas acendem conforme a câmera chega ao campo delas
-    const li = THREE.MathUtils.smoothstep(-s.pz, -6, 4);
+    const li = THREE.MathUtils.smoothstep(-s.pz, -6, 4) * (1 - THREE.MathUtils.smoothstep(-s.pz, 215, 285));
     this.lanternMat.uniforms.uTime.value = t;
     this.lanternMat.uniforms.uFog.value.copy(this.fog.color);
     this.lanternMat.uniforms.uDensity.value = this.fog.density;
@@ -1322,9 +1330,9 @@ export class World {
     // o espelho só é renderizado enquanto está perto da câmera
     if (this.reflector) {
       this.reflector.position.x = this.camera.position.x;
-      this.reflector.position.z = this.camera.position.z - 100;
+      this.reflector.position.z = this.camera.position.z;
     }
-    this.corridor.forEach((o) => (o.visible = s.pz < 4 && s.pz > -240));
+    this.corridor.forEach((o) => (o.visible = li > 0.002));
 
     this.tmpV.copy(this.camera.position);
     for (const u of this.updaters) u(t, dt);

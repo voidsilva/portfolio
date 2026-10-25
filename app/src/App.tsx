@@ -41,10 +41,11 @@ export default function App() {
   const [webgl] = useState(hasWebGL);
   const ambient = useRef<Ambient | null>(null);
   const [sound, setSound] = useState(false);
+  const [gateGone, setGateGone] = useState(false);
 
   /* ---------- carregamento ---------- */
   useEffect(() => {
-    document.documentElement.classList.add('locked');
+    document.documentElement.classList.add('locked', 'intro');
     let alive = true;
     const steps = { fonts: 0, three: 0, tex: 0, assets: 0 };
     const bump = () => alive && setLoad((steps.fonts + steps.three + steps.tex + steps.assets * 3) / 6);
@@ -140,6 +141,7 @@ export default function App() {
         Object.assign(w.rig, K.hero);
         w.renderOnce();
       }
+      document.documentElement.classList.remove('intro');
       const st = ScrollTrigger.create({ start: 0, end: 'max', onUpdate: (s) => setProgress(s.progress) });
       return () => st.kill();
     }
@@ -161,9 +163,11 @@ export default function App() {
         w.introStart();
         gsap.to(w.rig, { pz: K.hero.pz, py: K.hero.py, duration: 3.2, ease: 'expo.out' });
       }
-      gsap.from('.ch--hero .hero__name > .mask > span', { yPercent: 110, duration: 1.6, stagger: 0.12, ease: 'expo.out', delay: 0.9 });
-      gsap.from('.hero__role', { autoAlpha: 0, y: 12, duration: 1.2, ease: 'power3.out', delay: 1.3 });
-      gsap.from('.hero__scroll, .hud--top', { autoAlpha: 0, duration: 1.4, ease: 'power2.out', delay: 1.8 });
+      gsap.fromTo('.ch--hero .hero__name > .mask > span', { yPercent: 110 }, { yPercent: 0, duration: 1.6, stagger: 0.12, ease: 'expo.out', delay: 0.9 });
+      gsap.fromTo('.hero__role', { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: 1.2, ease: 'power3.out', delay: 1.3 });
+      gsap.fromTo('.hero__scroll, .hud--top', { autoAlpha: 0 }, { autoAlpha: 1, duration: 1.4, ease: 'power2.out', delay: 1.8 });
+      // os estados iniciais já estão aplicados: libera o que o CSS escondia durante o portal
+      document.documentElement.classList.remove('intro');
 
       // Câmera: segmentos sequenciais, cada um amarrado a um trecho do scroll.
       if (w && K) {
@@ -334,7 +338,7 @@ export default function App() {
         Pular para os projetos
       </a>
       {webgl ? <canvas className="gl" ref={canvas} aria-hidden="true" /> : <div className="gl gl--fallback" aria-hidden="true" />}
-      {phase !== 'in' && <Gate progress={load} ready={phase === 'gate'} suggestLite={systemReduced()} onEnter={enter} />}
+      {!gateGone && <Gate progress={load} ready={phase !== 'loading'} suggestLite={systemReduced()} onEnter={enter} onGone={() => setGateGone(true)} />}
       {phase === 'in' && (
         <>
           <Hud chapter={chapter} progress={progress} onNav={nav} sound={sound} onSound={toggleSound} />

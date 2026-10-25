@@ -1741,3 +1741,45 @@ button:focus-visible .roll::after {
 .pill a {
   text-shadow: 0 1px 12px rgba(6, 8, 14, 0.8);
 }
+
+/* ---------- v7: portal com céu próprio e entrada sem saltos ---------- */
+.gate {
+  background: #05060b;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: hidden;
+}
+.gate__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+}
+.gate__inner,
+.gate__foot {
+  position: relative;
+  z-index: 1;
+}
+.gate__foot {
+  position: absolute;
+}
+/* enquanto o portal está aberto, o que entra animado fica escondido (sem piscar) */
+.intro .ch--hero .hero__name {
+  visibility: hidden;
+}
+.intro .hero__role,
+.intro .hero__scroll,
+.intro .hud--top {
+  opacity: 0;
+  visibility: hidden;
+}
+.cursor {
+  animation: cursorIn 1.2s var(--ease) both;
+}
+@keyframes cursorIn {
+  from {
+    opacity: 0;
+  }
+}

@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { gsap } from '../lib/motion';
 import { LogoMark } from '../components/Logo';
+import { GateSky } from './GateSky';
 
 export type Mode = 'full' | 'lite';
 
 /** Portal de entrada: carrega o mundo e deixa o visitante escolher a experiência. */
-export function Gate({ progress, ready, suggestLite, onEnter }: { progress: number; ready: boolean; suggestLite: boolean; onEnter: (m: Mode, sound: boolean) => void }) {
+export function Gate({ progress, ready, suggestLite, onEnter, onGone }: { progress: number; ready: boolean; suggestLite: boolean; onEnter: (m: Mode, sound: boolean) => void; onGone: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   const k = Math.min(1, Math.max(0, progress));
   const pct = Math.round(k * 100);
@@ -18,13 +19,17 @@ export function Gate({ progress, ready, suggestLite, onEnter }: { progress: numb
 
   const enter = (m: Mode, sound = false) => {
     gsap
-      .timeline({ onComplete: () => onEnter(m, sound) })
+      .timeline({ onComplete: onGone })
       .to(root.current!.querySelectorAll('.gate__inner > *'), { autoAlpha: 0, y: -12, stagger: 0.04, duration: 0.4, ease: 'power2.in' })
-      .to(root.current, { clipPath: 'inset(0% 0% 100% 0%)', duration: 0.9, ease: 'expo.inOut' }, '-=0.1');
+      // o céu do portal se abre e dissolve na cena do lago
+      .to(root.current!.querySelector('.gate__bg'), { scale: 1.12, duration: 1.4, ease: 'power2.inOut' }, 0.15)
+      .call(() => onEnter(m, sound), undefined, 0.4)
+      .to(root.current, { autoAlpha: 0, duration: 1.3, ease: 'power2.inOut' }, 0.45);
   };
 
   return (
     <div className="gate" ref={root} role="dialog" aria-modal="true" aria-label="Entrada do portfólio SilvaDev">
+      <GateSky />
       <div className="gate__inner">
         <LogoMark className="gate__logo" />
         <p className="gate__word">Silva<b>Dev</b></p>
