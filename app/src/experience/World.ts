@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
@@ -140,6 +141,8 @@ export class World {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = this.high;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
 
     this.scene.fog = this.fog;
     this.scene.background = new THREE.Color('#0a0d14');
@@ -158,10 +161,31 @@ export class World {
     this.buildDust();
 
     // Pós-processamento: bloom (desktop), aberração, glitch, grão e vinheta.
-    // MSAA no alvo do compositor: bordas lisas mesmo com pós-processamento
-    const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: this.high ? 4 : 0 });
+    // MSAA só no quadro da cena (bordas lisas); os passes de efeito usam alvos simples,
+    // sem o custo de resolver multisample a cada passe.
+    const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType });
     this.composer = new EffectComposer(this.renderer, rt);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    const msaa = this.high ? new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: 4 }) : null;
+    if (msaa) {
+      const scene = this.scene;
+      const camera = this.camera;
+      class ScenePass extends Pass {
+        constructor() {
+          super();
+          this.needsSwap = false;
+        }
+        render(renderer: THREE.WebGLRenderer) {
+          renderer.setRenderTarget(msaa);
+          renderer.clear();
+          renderer.render(scene, camera);
+        }
+        setSize(w: number, h: number) {
+          msaa!.setSize(w, h);
+        }
+      }
+      this.composer.addPass(new ScenePass());
+      this.disposables.push(msaa);
+    } else this.composer.addPass(new RenderPass(this.scene, this.camera));
     if (this.high) {
       // Higieniza o quadro antes do bloom: valores inválidos (NaN/∞) apagariam a tela inteira.
       this.composer.addPass(
@@ -175,9 +199,14 @@ export class World {
               if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0);
               gl_FragColor = vec4(clamp(c.rgb, 0.0, 24.0), 1.0);
             }`,
-        }),
+        }, msaa ? '' : 'tDiffuse'),
       );
+      // lê direto o quadro multisample da cena
+      if (msaa) ((this.composer.passes[this.composer.passes.length - 1] as ShaderPass).uniforms.tDiffuse.value = msaa.texture);
       this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.38, 0.6, 0.55);
+      // o brilho é um desfoque: calculado em meia resolução fica igual e custa 1/4
+      const bloomSize = this.bloom.setSize.bind(this.bloom);
+      this.bloom.setSize = (w: number, h: number) => bloomSize(Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2)));
       this.composer.addPass(this.bloom);
     }
     this.finalPass = new ShaderPass({
@@ -279,16 +308,30 @@ export class World {
           }`,
       };
       const r = new Reflector(new THREE.PlaneGeometry(520, 520), {
-        textureWidth: Math.round(window.innerWidth * 0.5),
-        textureHeight: Math.round(window.innerHeight * 0.5),
+        textureWidth: Math.round(window.innerWidth * 0.42),
+        textureHeight: Math.round(window.innerHeight * 0.42),
         color: new THREE.Color('#9a98b4'),
         clipBias: 0.003,
+        multisample: 0, // o reflexo é distorcido pelas ondas: serrilhado não aparece
         shader,
       });
       r.rotation.x = -Math.PI / 2;
       r.position.set(0, 0, -90);
       this.scene.add(r);
       this.reflector = r;
+      // com a câmera parada, o reflexo é refeito em quadros alternados (as ondas são aplicadas
+      // na leitura, então continuam a 60 fps); em movimento, refaz todo quadro
+      const reflect = r.onBeforeRender.bind(r);
+      const lastCam = new THREE.Matrix4();
+      let odd = false;
+      r.onBeforeRender = (...args: Parameters<typeof reflect>) => {
+        const cam = args[2] as THREE.Camera;
+        const moved = !cam.matrixWorld.equals(lastCam) && cam.matrixWorld.elements.some((v, i) => Math.abs(v - lastCam.elements[i]) > 1e-4);
+        odd = !odd;
+        if (!moved && odd) return;
+        lastCam.copy(cam.matrixWorld);
+        reflect(...args);
+      };
       const mat = r.material as THREE.ShaderMaterial;
       this.ripples = mat.uniforms.uRip.value as THREE.Vector3[];
       this.updaters.push((t) => {
@@ -400,6 +443,7 @@ export class World {
           float hal = max(r - 1.0, 0.0);
           col += vec3(0.5, 0.5, 0.75) * exp(-hal * 1.6) * 0.16 * step(1.0, r) * step(0.0, m);
           col += vec3(0.3, 0.28, 0.52) * exp(-hal * 0.3) * 0.07 * step(0.0, m);
+          if (y > -0.02 && y < 0.2) {
           // montanhas em três camadas, com névoa entre elas e borda iluminada pela lua
           float moonAz = atan(uMoon.z, uMoon.x) + 3.14159;
           float lit = 0.5 + 0.5 * cos(az - moonAz);
@@ -425,6 +469,7 @@ export class World {
           float inNear = step(y, near) * fade;
           float rimN = smoothstep(0.004, 0.0, near - y) * lit;
           col = mix(col, nearCol + vec3(0.04, 0.04, 0.08) * rimN, inNear);
+          }
           // abaixo do horizonte o céu vira a névoa do lago: a água some nele sem borda
           col = mix(col, uWater, smoothstep(0.0, -0.014, y));
           gl_FragColor = vec4(col, 1.0);
@@ -835,7 +880,26 @@ export class World {
     };
     let slide = 0;
     let slideT = 0;
+    const near: THREE.Object3D[] = [];
+    group.traverse((o) => {
+      if (o !== group && o !== dome && ((o as THREE.Mesh).isMesh || (o as THREE.Points).isPoints)) near.push(o);
+    });
+    let shown = true;
+    let shadowT = 0;
     this.updaters.push((t, dt) => {
+      const inRange = this.camera.position.z > -115;
+      if (inRange !== shown) {
+        shown = inRange;
+        near.forEach((o) => (o.visible = inRange));
+      }
+      if (!inRange) return;
+      // sombra da lanterna: refeita só de vez em quando (nada ali se move)
+      shadowT += dt;
+      if (playing && intro < 1) this.renderer.shadowMap.needsUpdate = true;
+      else if (shadowT > 1) {
+        shadowT = 0;
+        this.renderer.shadowMap.needsUpdate = true;
+      }
       if (playing && intro < 1) {
         intro = Math.min(1, intro + dt / 3);
         apply(intro);
@@ -996,8 +1060,10 @@ export class World {
       this.scene.add(g);
       const baseY = slot.y;
       this.updaters.push((t) => {
-        g.position.y = baseY + Math.sin(t * 0.8 + i) * 0.18;
         const dz = this.camera.position.z - slot.z;
+        g.visible = dz < 120 && dz > -30;
+        if (!g.visible) return;
+        g.position.y = baseY + Math.sin(t * 0.8 + i) * 0.18;
         const flip = THREE.MathUtils.smoothstep(dz, 13, 34);
         g.rotation.y = slot.rotY + flip * (slot.x < 0 ? 1.25 : -1.25);
         g.scale.setScalar(1 - flip * 0.25);
@@ -1090,6 +1156,7 @@ export class World {
     pts.position.set(0, 6, CORE_Z);
     pts.frustumCulled = false;
     this.scene.add(pts);
+    this.updaters.push(() => (pts.visible = this.camera.position.z < CORE_Z + 125));
     const glow = new THREE.PointLight(PURPLE, 60, 30, 1.5);
     glow.position.set(0, 6, CORE_Z);
     this.scene.add(glow);

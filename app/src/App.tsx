@@ -36,7 +36,6 @@ export default function App() {
   const [load, setLoad] = useState(0);
   const [images, setImages] = useState<string[]>(projects.map(() => ''));
   const [chapter, setChapter] = useState(0);
-  const [progress, setProgress] = useState(0);
   const [panel, setPanel] = useState<number | null>(null);
   const [webgl] = useState(hasWebGL);
   const ambient = useRef<Ambient | null>(null);
@@ -127,7 +126,7 @@ export default function App() {
     document.documentElement.classList.toggle('lite', m === 'lite');
   }, []);
 
-  /* ---------- experiência completa ---------- */
+  /* ---------- experiÃªncia completa ---------- */
   useEffect(() => {
     if (phase !== 'in' || !mode) return;
     const w = world.current;
@@ -142,8 +141,7 @@ export default function App() {
         w.renderOnce();
       }
       document.documentElement.classList.remove('intro');
-      const st = ScrollTrigger.create({ start: 0, end: 'max', onUpdate: (s) => setProgress(s.progress) });
-      return () => st.kill();
+      return;
     }
 
     const l = new Lenis({ lerp: 0.07, wheelMultiplier: 0.8, touchMultiplier: 1.3, smoothWheel: true });
@@ -158,7 +156,7 @@ export default function App() {
     gsap.ticker.lagSmoothing(0);
 
     const ctx = gsap.context(() => {
-      // Intro: a câmera chega de longe com um glitch.
+      // Intro: a cÃ¢mera chega de longe com um glitch.
       if (w && K) {
         w.introStart();
         gsap.to(w.rig, { pz: K.hero.pz, py: K.hero.py, duration: 3.2, ease: 'expo.out' });
@@ -166,14 +164,14 @@ export default function App() {
       gsap.fromTo('.ch--hero .hero__name > .mask > span', { yPercent: 110 }, { yPercent: 0, duration: 1.6, stagger: 0.12, ease: 'expo.out', delay: 0.9 });
       gsap.fromTo('.hero__role', { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: 1.2, ease: 'power3.out', delay: 1.3 });
       gsap.fromTo('.hero__scroll, .hud--top', { autoAlpha: 0 }, { autoAlpha: 1, duration: 1.4, ease: 'power2.out', delay: 1.8 });
-      // os estados iniciais já estão aplicados: libera o que o CSS escondia durante o portal
+      // os estados iniciais jÃ¡ estÃ£o aplicados: libera o que o CSS escondia durante o portal
       document.documentElement.classList.remove('intro');
 
-      // Câmera: segmentos sequenciais, cada um amarrado a um trecho do scroll.
+      // CÃ¢mera: segmentos sequenciais, cada um amarrado a um trecho do scroll.
       if (w && K) {
         const seg = (a: Rig, b: Rig, st: ScrollTrigger.Vars) =>
           gsap.fromTo(w.rig, { ...a, glitch: 0 }, { ...b, glitch: 0, ease: 'none', immediateRender: false, scrollTrigger: { ...st, scrub: true } });
-        // transições limpas: sem glitch, só névoa e movimento de câmera
+        // transiÃ§Ãµes limpas: sem glitch, sÃ³ nÃ©voa e movimento de cÃ¢mera
         const pulse = (..._args: string[]) => void _args;
 
         seg(K.hero, K.over, { trigger: '#hero', start: 'top top', end: 'bottom top' });
@@ -230,21 +228,17 @@ export default function App() {
     };
   }, [phase, mode]);
 
-  /* ---------- capítulo atual e progresso ---------- */
+  /* ---------- capÃ­tulo atual e progresso ---------- */
   useEffect(() => {
     if (phase !== 'in') return;
     const sts = CHAPTERS.map((c, i) =>
       ScrollTrigger.create({ trigger: `#${c.id}`, start: 'top 55%', end: 'bottom 55%', onToggle: (s) => s.isActive && setChapter(i) }),
     );
-    const all = ScrollTrigger.create({ start: 0, end: 'max', onUpdate: (s) => setProgress(s.progress) });
     ScrollTrigger.refresh();
-    return () => {
-      sts.forEach((s) => s.kill());
-      all.kill();
-    };
+    return () => sts.forEach((s) => s.kill());
   }, [phase]);
 
-  /* ---------- "hover ink": rastro líquido dentro do nome ---------- */
+  /* ---------- "hover ink": rastro lÃ­quido dentro do nome ---------- */
   useEffect(() => {
     if (phase !== 'in' || mode !== 'full' || isCoarse()) return;
     const h1 = document.querySelector<HTMLElement>('.hero__name');
@@ -253,12 +247,18 @@ export default function App() {
     const pts: { x: number; y: number; r: number }[] = [];
     let raf = 0;
     const move = (e: PointerEvent) => {
+      if (scrollY > innerHeight) return;
       const b = h1.getBoundingClientRect();
       pts.unshift({ x: e.clientX - b.left, y: e.clientY - b.top, r: 150 });
       if (pts.length > 14) pts.pop();
     };
+    let idle = false;
     const tick = () => {
       raf = requestAnimationFrame(tick);
+      if (!pts.length) {
+        if (idle) return;
+        idle = true;
+      } else idle = false;
       pts.forEach((p) => (p.r *= 0.94));
       while (pts.length && pts[pts.length - 1].r < 6) pts.pop();
       const m = pts.length
@@ -306,7 +306,7 @@ export default function App() {
     };
   }, [phase, mode, chapter]);
 
-  // trilha: cada capítulo tem seus acordes
+  // trilha: cada capÃ­tulo tem seus acordes
   useEffect(() => {
     ambient.current?.setChapter(chapter);
   }, [chapter]);
@@ -341,7 +341,7 @@ export default function App() {
       {!gateGone && <Gate progress={load} ready={phase !== 'loading'} suggestLite={systemReduced()} onEnter={enter} onGone={() => setGateGone(true)} />}
       {phase === 'in' && (
         <>
-          <Hud chapter={chapter} progress={progress} onNav={nav} sound={sound} onSound={toggleSound} />
+          <Hud chapter={chapter} onNav={nav} sound={sound} onSound={toggleSound} />
           <Cursor />
         </>
       )}
