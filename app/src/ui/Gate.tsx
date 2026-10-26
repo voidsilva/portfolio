@@ -41,6 +41,10 @@ export function Gate({ progress, ready, suggestLite, onEnter, onGone }: { progre
               <i style={{ transform: `scaleX(${k})` }} />
             </div>
             <span className="gate__pct">{pct}%</span>
+            {/* a versão leve não depende do 3D: dá para entrar já */}
+            <button className="gate__lite gate__lite--early" onClick={() => enter('lite')} data-cursor>
+              entrar na versão leve
+            </button>
           </div>
         ) : (
           <div className="gate__actions">

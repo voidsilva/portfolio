@@ -1794,3 +1794,38 @@ button:focus-visible .roll::after {
 .archive a.is-static::before {
   display: none;
 }
+
+/* ---------- v8: versão leve como landing page ---------- */
+.lite-sky {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+.lite .gl {
+  display: none;
+}
+.lite .track {
+  position: relative;
+  z-index: 1;
+}
+.lite .proj__lite img {
+  border-radius: 14px;
+  border: 1px solid rgba(165, 150, 242, 0.22);
+  box-shadow: 0 30px 80px -30px rgba(80, 60, 200, 0.55);
+  transition: transform 0.6s var(--ease), box-shadow 0.6s var(--ease), border-color 0.4s;
+  will-change: transform;
+}
+.lite .proj__lite:hover img {
+  border-color: rgba(165, 150, 242, 0.5);
+  box-shadow: 0 40px 100px -30px rgba(120, 96, 240, 0.7);
+}
+.lite .archive {
+  background: none;
+}
+.gate__lite--early {
+  margin-top: 18px;
+  font-size: 13px;
+}

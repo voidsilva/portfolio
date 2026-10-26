@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
  * Fundo próprio do portal: céu de madrugada com aurora lenta, estrelas
  * piscando e anéis de luz orbitando a marca. Canvas 2D, leve e sem assets.
  */
-export function GateSky() {
+export function GateSky({ className = 'gate__bg', rings = true }: { className?: string; rings?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -99,6 +99,7 @@ export function GateSky() {
 
       // anéis orbitando a marca (elipses inclinadas)
       const base = Math.min(w, h) * 0.16;
+      if (rings) {
       for (let r = 0; r < 3; r++) {
         ctx.strokeStyle = `rgba(165, 150, 242, ${0.07 - r * 0.015})`;
         ctx.lineWidth = 1;
@@ -122,6 +123,7 @@ export function GateSky() {
         ctx.arc(x, y, o.r * front, 0, Math.PI * 2);
         ctx.fill();
       }
+      }
       ctx.globalAlpha = 1;
 
       // névoa baixa
@@ -132,14 +134,21 @@ export function GateSky() {
       ctx.fillStyle = mist;
       ctx.fillRect(0, h * 0.75, w, h * 0.25);
 
-      if (!reduce) raf = requestAnimationFrame(draw);
+      if (!reduce && !document.hidden) raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
+    // aba escondida: para de desenhar; ao voltar, retoma
+    const vis = () => {
+      cancelAnimationFrame(raf);
+      if (!document.hidden) raf = requestAnimationFrame(draw);
+    };
+    document.addEventListener('visibilitychange', vis);
     return () => {
       cancelAnimationFrame(raf);
+      document.removeEventListener('visibilitychange', vis);
       removeEventListener('resize', resize);
     };
-  }, []);
+  }, [rings]);
 
-  return <canvas className="gate__bg" ref={ref} aria-hidden="true" />;
+  return <canvas className={className} ref={ref} aria-hidden="true" />;
 }

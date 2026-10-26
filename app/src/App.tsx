@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { gsap, ScrollTrigger, systemReduced, isCoarse } from './lib/motion';
 import type { Rig, World as WorldT } from './experience/World';
 import { Gate, type Mode } from './ui/Gate';
+import { GateSky } from './ui/GateSky';
 import { Chapters, CHAPTERS } from './ui/Chapters';
 import { Cursor, Hud, ProjectPanel } from './ui/Hud';
 import { Ambient } from './experience/Ambient';
@@ -34,7 +35,9 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [mode, setMode] = useState<Mode | null>(null);
   const [load, setLoad] = useState(0);
-  const [images, setImages] = useState<string[]>(projects.map(() => ''));
+  // as imagens dos projetos são só URLs: a versão leve usa direto, sem esperar o 3D
+  const [images] = useState<string[]>(() => projects.map((p) => (p.preview.kind === 'image' ? p.preview.src : '')));
+  const modeRef = useRef<Mode | null>(null);
   const [chapter, setChapter] = useState(0);
   const [panel, setPanel] = useState<number | null>(null);
   const [webgl] = useState(hasWebGL);
@@ -91,9 +94,9 @@ export default function App() {
     );
 
     Promise.all([fonts, mod, texs]).then(([, m, loaded]) => {
-      if (!alive) return;
+      // quem entrou na versão leve durante o carregamento não precisa do mundo 3D
+      if (!alive || modeRef.current === 'lite') return;
       const all = loaded;
-      setImages(files);
       if (m && canvas.current) {
         if (innerWidth < 820) Object.assign(m.KEYS.hero, { px: 0, lx: 0.2, ly: 1.2, pz: 12 });
         world.current = new m.World(canvas.current, quality(), all, assets);
@@ -120,13 +123,14 @@ export default function App() {
       ambient.current.start();
       setSound(true);
     }
+    modeRef.current = m;
     setMode(m);
     setPhase('in');
     document.documentElement.classList.remove('locked');
     document.documentElement.classList.toggle('lite', m === 'lite');
   }, []);
 
-  /* ---------- experiÃªncia completa ---------- */
+  /* ---------- experiência completa ---------- */
   useEffect(() => {
     if (phase !== 'in' || !mode) return;
     const w = world.current;
@@ -134,14 +138,37 @@ export default function App() {
     window.scrollTo(0, 0);
 
     if (mode === 'lite') {
-      if (w && K) {
-        w.stop();
-        w.introSkip();
-        Object.assign(w.rig, K.hero);
-        w.renderOnce();
-      }
-      document.documentElement.classList.remove('intro');
-      return;
+      // versão leve: uma landing page. Sem mundo 3D (libera a GPU), céu em 2D ao fundo,
+      // scroll suave e entradas animadas só com transform/opacity.
+      world.current?.dispose();
+      world.current = null;
+      const l = new Lenis({ lerp: 0.1, smoothWheel: true });
+      lenis.current = l;
+      l.on('scroll', ScrollTrigger.update);
+      const tick = (t: number) => l.raf(t * 1000);
+      gsap.ticker.add(tick);
+      const ctx = gsap.context(() => {
+        gsap.fromTo('.ch--hero .hero__name > .mask > span', { yPercent: 110 }, { yPercent: 0, duration: 1.4, stagger: 0.12, ease: 'expo.out', delay: 0.5 });
+        gsap.fromTo('.hero__role', { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: 1, ease: 'power3.out', delay: 0.8 });
+        gsap.fromTo('.hero__scroll, .hud--top', { autoAlpha: 0 }, { autoAlpha: 1, duration: 1.2, ease: 'power2.out', delay: 1.2 });
+        document.documentElement.classList.remove('intro');
+        const items = '.manifesto__line, .proj__kicker, .proj__name, .proj__sum, .proj__actions, .proj__lite, .archive .ch__label, .archive li, .about > *, .stackx > .ch__label, .tech, .outro > *';
+        gsap.set(items, { autoAlpha: 0, y: 36 });
+        ScrollTrigger.batch(items, {
+          start: 'top 88%',
+          onEnter: (els) => gsap.to(els, { autoAlpha: 1, y: 0, duration: 0.9, stagger: 0.06, ease: 'power3.out', overwrite: true }),
+        });
+        // imagens dos projetos sobem um pouco mais devagar que o texto (parallax leve)
+        gsap.utils.toArray<HTMLElement>('.proj__lite img').forEach((img) =>
+          gsap.fromTo(img, { yPercent: 6 }, { yPercent: -6, ease: 'none', scrollTrigger: { trigger: img, start: 'top bottom', end: 'bottom top', scrub: true } }),
+        );
+      });
+      return () => {
+        ctx.revert();
+        gsap.ticker.remove(tick);
+        l.destroy();
+        lenis.current = null;
+      };
     }
 
     const l = new Lenis({ lerp: 0.07, wheelMultiplier: 0.8, touchMultiplier: 1.3, smoothWheel: true });
@@ -156,7 +183,7 @@ export default function App() {
     gsap.ticker.lagSmoothing(0);
 
     const ctx = gsap.context(() => {
-      // Intro: a cÃ¢mera chega de longe com um glitch.
+      // Intro: a câmera chega de longe com um glitch.
       if (w && K) {
         w.introStart();
         gsap.to(w.rig, { pz: K.hero.pz, py: K.hero.py, duration: 3.2, ease: 'expo.out' });
@@ -164,14 +191,14 @@ export default function App() {
       gsap.fromTo('.ch--hero .hero__name > .mask > span', { yPercent: 110 }, { yPercent: 0, duration: 1.6, stagger: 0.12, ease: 'expo.out', delay: 0.9 });
       gsap.fromTo('.hero__role', { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: 1.2, ease: 'power3.out', delay: 1.3 });
       gsap.fromTo('.hero__scroll, .hud--top', { autoAlpha: 0 }, { autoAlpha: 1, duration: 1.4, ease: 'power2.out', delay: 1.8 });
-      // os estados iniciais jÃ¡ estÃ£o aplicados: libera o que o CSS escondia durante o portal
+      // os estados iniciais já estão aplicados: libera o que o CSS escondia durante o portal
       document.documentElement.classList.remove('intro');
 
-      // CÃ¢mera: segmentos sequenciais, cada um amarrado a um trecho do scroll.
+      // Câmera: segmentos sequenciais, cada um amarrado a um trecho do scroll.
       if (w && K) {
         const seg = (a: Rig, b: Rig, st: ScrollTrigger.Vars) =>
           gsap.fromTo(w.rig, { ...a, glitch: 0 }, { ...b, glitch: 0, ease: 'none', immediateRender: false, scrollTrigger: { ...st, scrub: true } });
-        // transiÃ§Ãµes limpas: sem glitch, sÃ³ nÃ©voa e movimento de cÃ¢mera
+        // transições limpas: sem glitch, só névoa e movimento de câmera
         const pulse = (..._args: string[]) => void _args;
 
         seg(K.hero, K.over, { trigger: '#hero', start: 'top top', end: 'bottom top' });
@@ -229,7 +256,7 @@ export default function App() {
     };
   }, [phase, mode]);
 
-  /* ---------- capÃ­tulo atual e progresso ---------- */
+  /* ---------- capítulo atual e progresso ---------- */
   useEffect(() => {
     if (phase !== 'in') return;
     const sts = CHAPTERS.map((c, i) =>
@@ -239,9 +266,9 @@ export default function App() {
     return () => sts.forEach((s) => s.kill());
   }, [phase]);
 
-  /* ---------- "hover ink": rastro lÃ­quido dentro do nome ---------- */
+  /* ---------- "hover ink": rastro líquido dentro do nome ---------- */
   useEffect(() => {
-    if (phase !== 'in' || mode !== 'full' || isCoarse()) return;
+    if (phase !== 'in' || !mode || isCoarse()) return;
     const h1 = document.querySelector<HTMLElement>('.hero__name');
     const ink = h1?.querySelector<HTMLElement>('.ink');
     if (!h1 || !ink) return;
@@ -307,7 +334,7 @@ export default function App() {
     };
   }, [phase, mode, chapter]);
 
-  // trilha: cada capÃ­tulo tem seus acordes
+  // trilha: cada capítulo tem seus acordes
   useEffect(() => {
     ambient.current?.setChapter(chapter);
   }, [chapter]);
@@ -338,6 +365,7 @@ export default function App() {
       <a className="skip" href="#projetos">
         Pular para os projetos
       </a>
+      {mode === 'lite' && <GateSky className="lite-sky" rings={false} />}
       {webgl ? <canvas className="gl" ref={canvas} aria-hidden="true" /> : <div className="gl gl--fallback" aria-hidden="true" />}
       {!gateGone && <Gate progress={load} ready={phase !== 'loading'} suggestLite={systemReduced()} onEnter={enter} onGone={() => setGateGone(true)} />}
       {phase === 'in' && (

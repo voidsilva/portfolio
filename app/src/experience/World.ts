@@ -328,7 +328,9 @@ export class World {
       let odd = false;
       r.onBeforeRender = (...args: Parameters<typeof reflect>) => {
         const cam = args[2] as THREE.Camera;
-        const moved = !cam.matrixWorld.equals(lastCam) && cam.matrixWorld.elements.some((v, i) => Math.abs(v - lastCam.elements[i]) > 1e-4);
+        // movimento lento (parallax do mouse) também usa quadros alternados: o atraso some nas ondas
+        const e = cam.matrixWorld.elements;
+        const moved = e.some((v, i) => Math.abs(v - lastCam.elements[i]) > (i >= 12 ? 0.04 : 0.004));
         odd = !odd;
         if (!moved && odd) return;
         lastCam.copy(cam.matrixWorld);

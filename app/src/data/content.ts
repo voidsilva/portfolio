@@ -120,10 +120,9 @@ export const archive: { name: string; note: string; tags: string[]; url?: string
     tags: ['Python', 'FastAPI', 'Docker'],
   },
   {
-    name: 'AluraFlix',
-    note: 'Catálogo de vídeos por categoria feito em React.',
-    tags: ['React', 'JavaScript'],
-    url: 'https://github.com/voidsilva/AluraFlix',
+    name: 'Portal do Cliente',
+    note: 'Área do cliente com pedidos, segunda via de boletos, notas fiscais e abertura de chamados.',
+    tags: ['React', 'TypeScript', 'Supabase'],
   },
 ];
 
