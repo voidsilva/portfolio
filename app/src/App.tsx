@@ -189,6 +189,8 @@ export default function App() {
       if (w && K) {
         w.introStart();
         gsap.to(w.rig, { pz: K.hero.pz, py: K.hero.py, duration: 3.2, ease: 'expo.out' });
+        // a cena nasce em blocos grandes e vai ganhando definição enquanto os pixels do portal caem
+        gsap.fromTo(w, { pixelate: 42 }, { pixelate: 1, duration: 2.6, ease: 'power2.inOut', snap: { pixelate: 1 } });
       }
       gsap.fromTo('.ch--hero .hero__name > .mask > span', { yPercent: 110 }, { yPercent: 0, duration: 1.6, stagger: 0.12, ease: 'expo.out', delay: 0.9 });
       gsap.fromTo('.hero__role', { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: 1.2, ease: 'power3.out', delay: 1.3 });
@@ -269,6 +271,22 @@ export default function App() {
     ScrollTrigger.refresh();
     return () => sts.forEach((s) => s.kill());
   }, [phase]);
+
+  /* ---------- subtítulo do herói: alterna o que eu faço, decodificando ---------- */
+  useEffect(() => {
+    if (phase !== 'in' || !mode) return;
+    const el = document.querySelector<HTMLElement>('.hero__role');
+    if (!el) return;
+    const words = ['Desenvolvedor full stack', 'Sistemas web sob medida', 'APIs e integrações', 'Dashboards e ERPs'];
+    let i = 0;
+    const id = window.setInterval(() => {
+      if (scrollY > innerHeight || document.hidden) return;
+      i = (i + 1) % words.length;
+      el.dataset.text = words[i];
+      scramble(el, 0.8);
+    }, 3800);
+    return () => window.clearInterval(id);
+  }, [phase, mode]);
 
   /* ---------- "hover ink": rastro líquido dentro do nome ---------- */
   useEffect(() => {

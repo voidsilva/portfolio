@@ -4,7 +4,9 @@ import { useEffect, useRef } from 'react';
  * Fundo próprio do portal: céu de madrugada com aurora lenta, estrelas
  * piscando e anéis de luz orbitando a marca. Canvas 2D, leve e sem assets.
  */
-export function GateSky({ className = 'gate__bg', rings = true }: { className?: string; rings?: boolean }) {
+export type Dissolve = { k: number };
+
+export function GateSky({ className = 'gate__bg', rings = true, dissolve }: { className?: string; rings?: boolean; dissolve?: Dissolve }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -59,7 +61,8 @@ export function GateSky({ className = 'gate__bg', rings = true }: { className?: 
     };
 
     const draw = (ms: number) => {
-      const t = ms / 1000;
+      // movimento reduzido: o céu fica parado, mas o laço segue vivo para a saída em pixels
+      const t = reduce ? 0 : ms / 1000;
       // céu: degradê fundo azul-violeta
       const bg = ctx.createLinearGradient(0, 0, 0, h);
       bg.addColorStop(0, '#05060b');
@@ -134,7 +137,35 @@ export function GateSky({ className = 'gate__bg', rings = true }: { className?: 
       ctx.fillStyle = mist;
       ctx.fillRect(0, h * 0.75, w, h * 0.25);
 
-      if (!reduce && !document.hidden) raf = requestAnimationFrame(draw);
+      // saída em pixels: blocos somem do centro para as bordas, com um brilho lilás na frente da onda
+      const k = dissolve?.k ?? 0;
+      if (k > 0) {
+        const size = Math.max(18, Math.round(Math.min(w, h) / 34));
+        const cols = Math.ceil(w / size);
+        const rows = Math.ceil(h / size);
+        const maxD = Math.hypot(cols / 2, rows / 2);
+        for (let j = 0; j < rows; j++) {
+          for (let i = 0; i < cols; i++) {
+            const n = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+            const rnd = n - Math.floor(n);
+            const order = (Math.hypot(i - cols / 2, j - rows / 2) / maxD) * 0.62 + rnd * 0.38;
+            const local = (k * 1.2 - order) / 0.18;
+            if (local <= 0) continue;
+            const x = i * size;
+            const y = j * size;
+            ctx.clearRect(x, y, size, size);
+            if (local < 1) {
+              // pixel em transição: encolhe e brilha antes de sumir
+              const s2 = size * (1 - local * 0.7);
+              const off = (size - s2) / 2;
+              ctx.fillStyle = rnd > 0.82 ? `rgba(143, 211, 223, ${0.7 * (1 - local)})` : `rgba(185, 173, 255, ${0.6 * (1 - local)})`;
+              ctx.fillRect(x + off, y + off, s2, s2);
+            }
+          }
+        }
+      }
+
+      if (!document.hidden) raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
     // aba escondida: para de desenhar; ao voltar, retoma

@@ -1,13 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { gsap } from '../lib/motion';
 import { LogoMark } from '../components/Logo';
-import { GateSky } from './GateSky';
+import { GateSky, type Dissolve } from './GateSky';
 
 export type Mode = 'full' | 'lite';
 
 /** Portal de entrada: carrega o mundo e deixa o visitante escolher a experiência. */
 export function Gate({ progress, ready, suggestLite, onEnter, onGone }: { progress: number; ready: boolean; suggestLite: boolean; onEnter: (m: Mode, sound: boolean) => void; onGone: () => void }) {
   const root = useRef<HTMLDivElement>(null);
+  const dissolve = useRef<Dissolve>({ k: 0 }).current;
   const k = Math.min(1, Math.max(0, progress));
   const pct = Math.round(k * 100);
 
@@ -20,16 +21,16 @@ export function Gate({ progress, ready, suggestLite, onEnter, onGone }: { progre
   const enter = (m: Mode, sound = false) => {
     gsap
       .timeline({ onComplete: onGone })
-      .to(root.current!.querySelectorAll('.gate__inner > *'), { autoAlpha: 0, y: -12, stagger: 0.04, duration: 0.4, ease: 'power2.in' })
-      // o céu do portal se abre e dissolve na cena do lago
-      .to(root.current!.querySelector('.gate__bg'), { scale: 1.12, duration: 1.4, ease: 'power2.inOut' }, 0.15)
-      .call(() => onEnter(m, sound), undefined, 0.4)
-      .to(root.current, { autoAlpha: 0, duration: 1.3, ease: 'power2.inOut' }, 0.45);
+      .to(root.current!.querySelectorAll('.gate__inner > *, .gate__foot'), { autoAlpha: 0, y: -12, stagger: 0.04, duration: 0.4, ease: 'power2.in' })
+      // o céu do portal se desfaz em pixels e revela o lago por baixo
+      .call(() => onEnter(m, sound), undefined, 0.35)
+      .set(root.current, { backgroundColor: 'transparent' }, 0.4)
+      .to(dissolve, { k: 1, duration: 2, ease: 'power1.inOut' }, 0.4);
   };
 
   return (
     <div className="gate" ref={root} role="dialog" aria-modal="true" aria-label="Entrada do portfólio SilvaDev">
-      <GateSky />
+      <GateSky dissolve={dissolve} />
       <div className="gate__inner">
         <LogoMark className="gate__logo" />
         <p className="gate__word">Silva<b>Dev</b></p>

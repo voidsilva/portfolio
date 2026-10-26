@@ -188,15 +188,18 @@ export class World {
         uTime: { value: 0 },
         uGlitch: { value: 0 },
         uAberr: { value: 0.0005 },
+        uPx: { value: 1 },
         uRes: { value: new THREE.Vector2(1, 1) },
       },
       vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: /* glsl */ `
-        uniform sampler2D tDiffuse; uniform float uTime; uniform float uGlitch; uniform float uAberr; uniform vec2 uRes;
+        uniform sampler2D tDiffuse; uniform float uTime; uniform float uGlitch; uniform float uAberr; uniform vec2 uRes; uniform float uPx;
         varying vec2 vUv;
         float rand(vec2 c){ return fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453); }
         void main(){
           vec2 uv = vUv;
+          // pixelização da entrada (uPx = tamanho do bloco em pixels; 1 = imagem normal)
+          if (uPx > 1.0) uv = (floor(uv * uRes / uPx) + 0.5) * uPx / uRes;
           float g = uGlitch;
           float slice = floor(uv.y * 24.0 + floor(uTime * 14.0) * 5.0);
           float r = rand(vec2(slice, floor(uTime * 22.0)));
@@ -309,6 +312,14 @@ export class World {
       };
       const mat = r.material as THREE.ShaderMaterial;
       this.ripples = mat.uniforms.uRip.value as THREE.Vector3[];
+      let nextDrop = 3;
+      let dropI = 7;
+      this.updaters.push((t) => {
+        if (t < nextDrop || !this.ripples) return;
+        nextDrop = t + 2.2 + Math.random() * 3.5;
+        const c = this.camera.position;
+        this.ripples[dropI++ % this.ripples.length].set(c.x + (Math.random() - 0.5) * 18, c.z - 6 - Math.random() * 22, t);
+      });
       this.updaters.push((t) => {
         mat.uniforms.uTime.value = t;
         mat.uniforms.uFog.value.copy(this.fog.color);
@@ -423,6 +434,14 @@ export class World {
           float hal = max(r - 1.0, 0.0);
           col += vec3(0.5, 0.5, 0.75) * exp(-hal * 1.6) * 0.16 * step(1.0, r) * step(0.0, m);
           col += vec3(0.3, 0.28, 0.52) * exp(-hal * 0.3) * 0.07 * step(0.0, m);
+          // aurora: cortinas lentas de verde-água e lilás no alto do céu
+          if (y > 0.1 && y < 0.8) {
+            float curtain = smoothstep(0.1, 0.3, y) * smoothstep(0.8, 0.42, y);
+            float band = sin(az * 2.0 + uTime * 0.05 + sin(az * 5.0 + uTime * 0.08) * 0.7);
+            float rays = n2(vec2(az * 26.0, y * 2.0 - uTime * 0.06));
+            vec3 ac = mix(vec3(0.16, 0.5, 0.5), vec3(0.45, 0.33, 0.85), smoothstep(0.2, 0.6, y));
+            col += ac * curtain * pow(max(band, 0.0), 2.0) * (0.35 + 0.65 * rays) * 0.3 * (1.0 - pow(max(m, 0.0), 8.0));
+          }
           if (y > -0.02 && y < 0.2) {
           // montanhas em três camadas, com névoa entre elas e borda iluminada pela lua
           float moonAz = atan(uMoon.z, uMoon.x) + 3.14159;
@@ -870,6 +889,20 @@ export class World {
     fglow.scale.set(0.95, 0.95, 1);
     fglow.position.y = 0.32;
     lan.add(fglow);
+    // mariposas: pontinhos de luz quente girando em volta da chama
+    const moths = Array.from({ length: 5 }, (_, i) => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: '#ffd9a0', transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+      sp.scale.setScalar(0.06 + (i % 2) * 0.03);
+      lan.add(sp);
+      return { sp, r: 0.28 + Math.random() * 0.22, s: 0.9 + Math.random() * 1.4, p: Math.random() * 6.28, h: Math.random() * 0.3 };
+    });
+    this.updaters.push((t) => {
+      for (const m of moths) {
+        const a = t * m.s + m.p;
+        m.sp.position.set(Math.cos(a) * m.r, 0.36 + m.h + Math.sin(a * 2.3) * 0.08, Math.sin(a) * m.r * 0.8);
+        m.sp.material.opacity = (0.5 + 0.5 * Math.sin(a * 3.1)) * Math.min(1, flame.scale.x);
+      }
+    });
     lan.position.set(1.25, topL, -0.25);
     lan.scale.setScalar(1.25);
     group.add(lan);
@@ -888,7 +921,7 @@ export class World {
 
   /** Lanternas de papel acesas subindo devagar sobre o lago (capítulo Abordagem). */
   private buildCorridor() {
-    const count = this.high ? 340 : 140;
+    const count = this.high ? 270 : 120;
     const geo = new THREE.CylinderGeometry(0.2, 0.15, 0.42, 10, 1, true);
     const seeds = new Float32Array(count * 4);
     const rand = mulberry(11);
@@ -1118,7 +1151,7 @@ export class World {
   }
 
   private buildDust() {
-    const count = this.high ? 4200 : 1500;
+    const count = this.high ? 3000 : 1200;
     const pos = new Float32Array(count * 3);
     const rnd = new Float32Array(count);
     const rand = mulberry(3);
@@ -1205,6 +1238,14 @@ export class World {
     this.released.push(g);
     if (this.ripples) this.ripples[Math.floor(Math.random() * 10)].set(hit.x, hit.z, this.clock.elapsedTime);
     return true;
+  }
+
+  /** Tamanho do bloco da pixelização de entrada (1 = sem efeito). */
+  get pixelate() {
+    return this.finalPass.uniforms.uPx.value as number;
+  }
+  set pixelate(v: number) {
+    this.finalPass.uniforms.uPx.value = v;
   }
 
   setPointer(x: number, y: number) {
