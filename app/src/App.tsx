@@ -9,6 +9,7 @@ import { Chapters, CHAPTERS } from './ui/Chapters';
 import { Cursor, Hud, ProjectPanel } from './ui/Hud';
 import { Ambient } from './experience/Ambient';
 import { projects } from './data/content';
+import { magnetic, scramble, spotlight, velocitySkew } from './lib/effects';
 
 type Phase = 'loading' | 'gate' | 'in';
 
@@ -49,8 +50,8 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.add('locked', 'intro');
     let alive = true;
-    const steps = { fonts: 0, three: 0, tex: 0, assets: 0 };
-    const bump = () => alive && setLoad((steps.fonts + steps.three + steps.tex + steps.assets * 3) / 6);
+    const steps = { fonts: 0, three: 0, tex: 0 };
+    const bump = () => alive && setLoad((steps.fonts + steps.three * 2 + steps.tex * 2) / 5);
 
     const fonts = Promise.all(
       ['600 40px Montserrat', '800 40px Montserrat', '400 16px Manrope', '500 14px "JetBrains Mono"'].map((f) => document.fonts.load(f).catch(() => null)),
@@ -58,15 +59,10 @@ export default function App() {
       steps.fonts = 1;
       bump();
     });
-    let assets: import('./experience/World').WorldAssets | undefined;
     const mod = webgl
-      ? import('./experience/World').then(async (m) => {
+      ? import('./experience/World').then((m) => {
           steps.three = 1;
           bump();
-          assets = await m.loadAssets((k) => {
-            steps.assets = k;
-            bump();
-          });
           return m;
         })
       : Promise.resolve(null);
@@ -99,7 +95,7 @@ export default function App() {
       const all = loaded;
       if (m && canvas.current) {
         if (innerWidth < 820) Object.assign(m.KEYS.hero, { px: 0, lx: 0.2, ly: 1.2, pz: 12 });
-        world.current = new m.World(canvas.current, quality(), all, assets);
+        world.current = new m.World(canvas.current, quality(), all);
         if (import.meta.env.DEV) Object.assign(window, { __world: world.current });
         keys.current = m.KEYS;
         world.current.rig.pz = 70;
@@ -163,8 +159,12 @@ export default function App() {
           gsap.fromTo(img, { yPercent: 6 }, { yPercent: -6, ease: 'none', scrollTrigger: { trigger: img, start: 'top bottom', end: 'bottom top', scrub: true } }),
         );
       });
+      const offMag = isCoarse() ? () => undefined : magnetic('.cta, .chip, .hud__nav a', 0.3);
+      const offSpot = spotlight('#stack');
       return () => {
         ctx.revert();
+        offMag();
+        offSpot();
         gsap.ticker.remove(tick);
         l.destroy();
         lenis.current = null;
@@ -173,8 +173,10 @@ export default function App() {
 
     const l = new Lenis({ lerp: 0.07, wheelMultiplier: 0.8, touchMultiplier: 1.3, smoothWheel: true });
     lenis.current = l;
+    const skew = velocitySkew('.proj__name, .outro__title, .stackx__words');
     l.on('scroll', (e: Lenis) => {
       ScrollTrigger.update();
+      skew(e.velocity);
       ambient.current?.push(Math.abs(e.velocity) / 80);
       world.current?.setVelocity(e.velocity);
     });
@@ -198,21 +200,16 @@ export default function App() {
       if (w && K) {
         const seg = (a: Rig, b: Rig, st: ScrollTrigger.Vars) =>
           gsap.fromTo(w.rig, { ...a, glitch: 0 }, { ...b, glitch: 0, ease: 'none', immediateRender: false, scrollTrigger: { ...st, scrub: true } });
-        // transições limpas: sem glitch, só névoa e movimento de câmera
-        const pulse = (..._args: string[]) => void _args;
 
         seg(K.hero, K.over, { trigger: '#hero', start: 'top top', end: 'bottom top' });
         seg(K.over, K.corridor, { trigger: '#manifesto', start: 'top top', end: 'bottom bottom' });
-        pulse('#hero', '75% top', 'bottom top');
         let prev = K.corridor;
         projects.forEach((p, i) => {
           seg(prev, K[`p${i}`], { trigger: `#p-${p.id}`, start: 'top bottom', end: 'top top' });
           prev = K[`p${i}`];
         });
-        pulse('#projetos', 'top bottom', 'top 60%');
         seg(prev, K.archive, { trigger: '.archive', start: 'top bottom', end: 'top 25%' });
         seg(K.archive, K.about, { trigger: '#sobre', start: 'top bottom', end: 'top top' });
-        pulse('#sobre', 'top bottom', 'top 55%');
         seg(K.about, K.stack, { trigger: '#stack', start: 'top bottom', end: 'top top' });
         seg(K.stack, K.outro, { trigger: '#contato', start: 'top bottom', end: 'top top' });
       }
@@ -222,6 +219,8 @@ export default function App() {
       const mtl = gsap.timeline({ scrollTrigger: { trigger: '#manifesto', start: 'top top', end: 'bottom bottom', scrub: 0.5 } });
       lines.forEach((ln, i) => {
         mtl.fromTo(ln, { autoAlpha: 0, y: 50, scale: 0.98 }, { autoAlpha: 1, y: 0, scale: 1, duration: 1, ease: 'power2.out' }, i * 1.1);
+        // as palavras acendem uma a uma, no ritmo do scroll
+        mtl.fromTo(ln.querySelectorAll('.mw'), { opacity: 0.16 }, { opacity: 1, stagger: 0.06, duration: 0.3, ease: 'none' }, i * 1.1 + 0.25);
       });
       mtl.to(lines, { autoAlpha: 0, y: -40, stagger: 0.15, duration: 1, ease: 'power2.in' }, '+=0.8');
 
@@ -229,6 +228,8 @@ export default function App() {
       projects.forEach((p) => {
         const el = document.getElementById(`p-${p.id}`)!;
         const tl = gsap.timeline({ paused: true });
+        const kicker = el.querySelector<HTMLElement>('.proj__kicker span');
+        if (kicker) tl.call(() => void (tl.reversed() || scramble(kicker)), undefined, 0.15);
         tl.fromTo(el.querySelectorAll('.c'), { yPercent: 120, rotate: 8, autoAlpha: 0 }, { yPercent: 0, rotate: 0, autoAlpha: 1, stagger: 0.018, duration: 0.9, ease: 'expo.out' })
           .fromTo(el.querySelectorAll('.proj__kicker, .proj__sum, .proj__actions, .proj__count'), { autoAlpha: 0, y: 14 }, { autoAlpha: 1, y: 0, stagger: 0.07, duration: 1, ease: 'power3.out' }, 0.2);
         ScrollTrigger.create({
@@ -243,13 +244,16 @@ export default function App() {
 
       gsap.fromTo('.about > *', { autoAlpha: 0, x: -60 }, { autoAlpha: 1, x: 0, stagger: 0.08, ease: 'none', scrollTrigger: { trigger: '#sobre', start: 'top 70%', end: 'top 10%', scrub: 0.6 } });
       gsap.fromTo('.tech', { autoAlpha: 0, y: 40 }, { autoAlpha: 1, y: 0, stagger: 0.03, ease: 'none', clearProps: 'opacity,visibility', scrollTrigger: { trigger: '#stack', start: 'top 70%', end: 'top 10%', scrub: 0.6 } });
-      gsap.fromTo('.stackx__map', { autoAlpha: 0 }, { autoAlpha: 1, scrollTrigger: { trigger: '#stack', start: 'top 40%', toggleActions: 'play none none reverse' } });
-      gsap.from('.ch--outro .mask > span', { yPercent: 115, stagger: 0.1, duration: 1.3, ease: 'expo.out', scrollTrigger: { trigger: '#contato', start: 'top 20%' } });
-      gsap.from('.outro > p, .outro > .btn, .foot', { autoAlpha: 0, y: 20, stagger: 0.08, scrollTrigger: { trigger: '#contato', start: 'top 10%' } });
+      gsap.fromTo('.ch--outro .mask > span', { yPercent: 115 }, { yPercent: 0, stagger: 0.1, duration: 1.3, ease: 'expo.out', scrollTrigger: { trigger: '#contato', start: 'top 20%', toggleActions: 'play none none reverse' } });
+      gsap.fromTo('.outro > .cta, .foot', { autoAlpha: 0, y: 20 }, { autoAlpha: 1, y: 0, stagger: 0.08, duration: 1, ease: 'power3.out', scrollTrigger: { trigger: '#contato', start: 'top 10%', toggleActions: 'play none none reverse' } });
     });
+    const offMag = isCoarse() ? () => undefined : magnetic('.cta, .chip, .hud__nav a', 0.3);
+    const offSpot = spotlight('#stack');
 
     return () => {
       ctx.revert();
+      offMag();
+      offSpot();
       gsap.ticker.remove(tick);
       l.destroy();
       lenis.current = null;
@@ -374,7 +378,7 @@ export default function App() {
           <Cursor />
         </>
       )}
-      <Chapters onOpen={setPanel} images={images} />
+      <Chapters onOpen={setPanel} images={images} onNav={nav} />
       <ProjectPanel index={panel} images={images} onClose={() => setPanel(null)} />
     </>
   );

@@ -6,7 +6,7 @@ export function LogoMark({ mono = false, className, title }: { mono?: boolean; c
     <svg viewBox="0 0 64 64" className={className} role={title ? 'img' : undefined} aria-hidden={title ? undefined : true} fill="none" strokeLinecap="round" strokeLinejoin="round">
       {title && <title>{title}</title>}
       {LOGO.strokes.map((s, i) => (
-        <path key={i} d={s.d} stroke={mono ? 'currentColor' : TONES[s.tone]} strokeWidth={s.w} />
+        <path key={i} d={s.d} stroke={mono ? 'currentColor' : TONES[s.tone]} strokeWidth={s.w} pathLength={1} />
       ))}
       {LOGO.dots.map((d, i) => (
         <circle key={i} cx={d.cx} cy={d.cy} r={d.r} fill={mono ? 'currentColor' : TONES.cyan} />

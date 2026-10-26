@@ -2,13 +2,14 @@
 
 Portfólio publicado em **[silvadev.xyz](https://silvadev.xyz)**.
 
-Um mundo 3D navegável pelo scroll (Three.js + GSAP + Lenis): o monólito SD, um corredor de luz, a galeria de projetos e um núcleo de partículas, com os projetos reais de [github.com/voidsilva](https://github.com/voidsilva).
+Uma noite à beira de um lago, navegada pelo scroll: o notebook na pedra, as lanternas subindo, as placas dos projetos flutuando sobre a água e as partículas que formam a marca no final. Tudo modelado no código, sem arquivos 3D externos.
 
 ## Stack
 
 - React 18 + TypeScript + Vite
 - Three.js (cena carregada sob demanda, qualidade adaptativa)
-- GSAP + ScrollTrigger
+- GSAP + ScrollTrigger + Lenis
+- Web Audio para a trilha lo-fi gerada em tempo real
 - CSS próprio, sem framework de UI
 
 ## Rodando
@@ -23,23 +24,16 @@ npm run build    # gera index.html e assets/ na raiz, publicados pelo GitHub Pag
 
 ```
 app/src/
-├── data/content.ts      # projetos, stack e textos (tudo verificado nos repositórios)
-├── three/CoreScene.ts   # núcleo 3D, partículas, luzes e câmera
-├── components/          # Hero, Manifesto, Projects, About, Stack, Outro, Nav, Cursor
-├── lib/motion.ts        # GSAP, magnetismo, tilt e preferência de movimento
-└── styles/global.css    # identidade visual SilvaDev
+├── App.tsx                 # carregamento, portal, scroll e câmera por seção
+├── experience/World.ts     # cena 3D: lago, céu, lua, pedra, notebook, lanternas, placas e partículas
+├── experience/Ambient.ts   # trilha lo-fi generativa
+├── ui/                     # portal, capítulos, menu, cursor e painel de projeto
+├── data/content.ts         # projetos, trabalhos e ferramentas
+└── styles/global.css       # identidade visual SilvaDev
 ```
 
-## Acessibilidade e desempenho
+## Desempenho e acessibilidade
 
-- Respeita `prefers-reduced-motion`, com botão para o visitante ligar ou reduzir as animações.
-- Fallback sem WebGL, partículas e resolução reduzidas em celulares e máquinas modestas.
-- Navegação por teclado, foco visível e link para pular direto aos projetos.
-
-A página "em breve" anterior está guardada em `legacy/`.
-
-## Créditos dos assets
-
-Modelos e céu da cena de abertura vêm do [Poly Haven](https://polyhaven.com), com licença CC0:
-- Classic Laptop e Lantern 01 (modelos)
-- Lakeside Night, por Greg Zaal e Jarod Guest (HDRI)
+- Versão leve sem 3D (landing page com animações suaves), oferecida na entrada.
+- Resolução adaptativa pelo FPS; objetos fora da névoa não são desenhados.
+- Respeita `prefers-reduced-motion`, navegação por teclado e link para pular aos projetos.

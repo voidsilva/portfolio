@@ -28,7 +28,20 @@ function Chars({ text }: { text: string }) {
   );
 }
 
-export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; images: string[] }) {
+/** Frase dividida em palavras, para acenderem uma a uma no scroll. */
+function Words({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(' ').map((w, i) => (
+        <span className="mw" key={i}>
+          {w}{' '}
+        </span>
+      ))}
+    </>
+  );
+}
+
+export function Chapters({ onOpen, images, onNav }: { onOpen: (i: number) => void; images: string[]; onNav: (id: string) => void }) {
   const [active, setActive] = useState<string | null>(null);
 
   return (
@@ -56,9 +69,9 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
       {/* 02 · Corredor */}
       <section className="ch ch--manifesto" id="manifesto" aria-label="Abordagem">
         <div className="sticky">
-          <p className="manifesto__line" data-line="0">Meus projetos vivem na parte que ninguém vê:</p>
-          <p className="manifesto__line hl" data-line="1">autenticação, validação, papéis de acesso e regras de negócio.</p>
-          <p className="manifesto__line" data-line="2">E em interfaces que deixam tudo isso simples para quem usa no dia a dia.</p>
+          <p className="manifesto__line" data-line="0"><Words text="Meus projetos vivem na parte que ninguém vê:" /></p>
+          <p className="manifesto__line hl" data-line="1"><Words text="autenticação, validação, papéis de acesso e regras de negócio." /></p>
+          <p className="manifesto__line" data-line="2"><Words text="E em interfaces que deixam tudo isso simples para quem usa no dia a dia." /></p>
         </div>
       </section>
 
@@ -69,7 +82,7 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
             <div className="sticky proj__stage">
               <div className="proj__text">
                 <p className="proj__kicker">
-                  <b>{p.index}</b> {p.kicker}
+                  <b>{p.index}</b> <span>{p.kicker}</span>
                 </p>
                 <h2 className="proj__name" id={`t-${p.id}`}>
                   <Chars text={p.name} />
@@ -164,7 +177,9 @@ export function Chapters({ onOpen, images }: { onOpen: (i: number) => void; imag
           </a>
           <footer className="foot mono">
             <span>© {new Date().getFullYear()} Paulo Silva · silvadev.xyz</span>
-            <span>Design e código por Paulo Silva</span>
+            <button type="button" className="foot__top" onClick={() => onNav('hero')} data-cursor>
+              Voltar ao lago <span aria-hidden="true">↑</span>
+            </button>
           </footer>
         </div>
       </section>

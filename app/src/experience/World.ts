@@ -7,12 +7,10 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { LOGO, sampleLogo, toWorld } from './logoShape';
 import { projects } from '../data/content';
-import { haloTexture, numberTexture } from './textures';
+import { haloTexture } from './textures';
 
 /**
  * O mundo SilvaDev: uma única cena contínua que a câmera atravessa.
@@ -33,39 +31,6 @@ export interface Rig {
 }
 
 export type Quality = 'high' | 'low';
-
-export interface WorldAssets {
-  hdr?: THREE.DataTexture;
-  laptop?: THREE.Object3D;
-  lantern?: THREE.Object3D;
-}
-
-/** Carrega os modelos e o céu (CC0, Poly Haven) reportando o progresso. */
-/** Cena antiga (modelos 2k + foto HDR), só para comparação: ?cena-antiga na URL. */
-const OLD_SCENE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('cena-antiga');
-
-export async function loadAssets(onProgress: (k: number) => void): Promise<WorldAssets> {
-  // a cena nova é modelada no código: nada pesado para baixar
-  if (!OLD_SCENE) {
-    onProgress(1);
-    return {};
-  }
-  const parts = [0, 0, 0];
-  const tick = (i: number) => (e: ProgressEvent) => {
-    // o servidor manda o arquivo comprimido: o total informado pode ser menor que o baixado
-    if (e.total) parts[i] = Math.min(1, e.loaded / e.total);
-    onProgress((parts[0] + parts[1] + parts[2]) / 3);
-  };
-  const gltf = new GLTFLoader();
-  const safe = <T,>(p: Promise<T>) => p.catch(() => undefined);
-  const [hdr, laptop, lantern] = await Promise.all([
-    safe(new RGBELoader().loadAsync('/hdri/lakeside_night_1k.hdr', tick(0))),
-    safe(gltf.loadAsync('/models/classic_laptop/model.gltf', tick(1)).then((g) => g.scene)),
-    safe(gltf.loadAsync('/models/Lantern_01/model.gltf', tick(2)).then((g) => g.scene)),
-  ]);
-  onProgress(1);
-  return { hdr: hdr as THREE.DataTexture | undefined, laptop, lantern };
-}
 
 const PURPLE = new THREE.Color('#9d8cf0');
 const CYAN = new THREE.Color('#8fd3df');
@@ -141,7 +106,7 @@ export class World {
   introStart: () => void = () => {};
   introSkip: () => void = () => {};
 
-  constructor(canvas: HTMLCanvasElement, quality: Quality, private screenTextures: THREE.Texture[], private assets?: WorldAssets) {
+  constructor(canvas: HTMLCanvasElement, quality: Quality, private screenTextures: THREE.Texture[]) {
     this.high = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.high ? 1.5 : 1));
@@ -150,10 +115,6 @@ export class World {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.shadowMap.enabled = this.high;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.shadowMap.autoUpdate = false;
-    this.renderer.shadowMap.needsUpdate = true;
 
     this.scene.fog = this.fog;
     this.scene.background = new THREE.Color('#0a0d14');
@@ -170,6 +131,7 @@ export class World {
     this.buildGallery();
     this.buildCore();
     this.buildDust();
+    this.renderer.compileAsync(this.scene, this.camera).catch(() => undefined);
 
     // Pós-processamento: bloom (desktop), aberração, glitch, grão e vinheta.
     // MSAA só no quadro da cena (bordas lisas); os passes de efeito usam alvos simples,
@@ -354,23 +316,27 @@ export class World {
       });
       this.disposables.push(r.geometry, mat, r.getRenderTarget());
     }
-    // Chão escuro com grade fina; no desktop fica sobre o espelho, translúcido.
+    // Superfície do lago: no desktop escurece levemente o espelho; no celular (sem espelho)
+    // vira água desenhada, com ondulação e brilhos do luar, sem grade.
     const grid = new THREE.Mesh(
       new THREE.PlaneGeometry(520, 520),
       new THREE.ShaderMaterial({
         transparent: true,
         depthWrite: false,
-        uniforms: { uColor: { value: PURPLE }, uBase: { value: new THREE.Color('#07080c') }, uSolid: { value: this.high ? 0.22 : 1 }, uFog: { value: new THREE.Color() }, uDensity: { value: 0.026 } },
+        uniforms: { uBase: { value: new THREE.Color(this.high ? '#07080c' : '#0e1022') }, uSolid: { value: this.high ? 0.22 : 1 }, uFog: { value: new THREE.Color() }, uDensity: { value: 0.026 }, uTime: { value: 0 } },
         vertexShader: /* glsl */ `varying vec3 vW; varying float vD; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; vec4 mv = viewMatrix * w; vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
         fragmentShader: /* glsl */ `
-          uniform vec3 uColor; uniform vec3 uBase; uniform float uSolid; uniform vec3 uFog; uniform float uDensity; varying vec3 vW; varying float vD;
-          float line(float v, float w){ float f = abs(fract(v) - 0.5); return smoothstep(w, 0.0, 0.5 - f); }
+          uniform vec3 uBase; uniform float uSolid; uniform vec3 uFog; uniform float uDensity; uniform float uTime; varying vec3 vW; varying float vD;
           void main(){
-            float g = max(line(vW.x / 4.0, 0.012), line(vW.z / 4.0, 0.012));
-            float fade = exp(-vD * 0.035);
-            vec3 col = uBase + uColor * g * (uSolid < 0.9 ? 0.0 : 0.12) * fade;
+            vec3 col = uBase;
+            if (uSolid > 0.9) {
+              float fade = exp(-vD * 0.03);
+              float w = sin(vW.z * 4.6 + uTime * 0.9 + sin(vW.x * 0.5 + uTime * 0.3) * 2.5) * sin(vW.x * 2.2 - uTime * 0.5);
+              float glint = smoothstep(0.72, 1.0, w) * fade;
+              col += vec3(0.05, 0.05, 0.1) * (0.5 + 0.5 * sin(vW.z * 0.6 + uTime * 0.5)) * fade + vec3(0.55, 0.55, 0.85) * glint * 0.22;
+            }
             float f = 1.0 - exp(-uDensity * uDensity * vD * vD);
-            gl_FragColor = vec4(mix(col, uFog, f), max(uSolid, g * 0.3 * fade));
+            gl_FragColor = vec4(mix(col, uFog, f), uSolid);
           }
         `,
       }),
@@ -385,6 +351,7 @@ export class World {
       grid.position.z = this.camera.position.z;
       gm.uniforms.uFog.value.copy(this.fog.color);
       gm.uniforms.uDensity.value = this.fog.density;
+      gm.uniforms.uTime.value = this.clock.elapsedTime;
     });
   }
 
@@ -561,81 +528,15 @@ export class World {
   /**
    * A cena de abertura: um dev programando de madrugada à beira do lago.
    * Pedra na margem, notebook aberto com os projetos na tela, lanterna acesa
-   * e vaga-lumes, sob o céu fotográfico de uma noite real (HDRI CC0).
+   * e vaga-lumes, tudo modelado no código.
    */
   private buildMonolith() {
     this.buildSky();
-    const A = this.assets;
     const group = new THREE.Group();
     this.scene.add(group);
 
-    // Céu fotográfico: domo com a HDRI, que some quando a câmera sai da margem.
-    let dome: THREE.Mesh | null = null;
-    if (A?.hdr) {
-      const tex = A.hdr;
-      const pm = new THREE.PMREMGenerator(this.renderer);
-      const env = pm.fromEquirectangular(tex).texture;
-      this.scene.environment = env;
-      this.scene.environmentIntensity = 0.35;
-      this.disposables.push(pm, env);
-      // domo com a foto acima do horizonte; abaixo dele, a cor da névoa (emenda com o lago)
-      const domeMat = new THREE.ShaderMaterial({
-        side: THREE.BackSide,
-        depthWrite: false,
-        transparent: true,
-        fog: false,
-        uniforms: { uTime: { value: 0 }, tMap: { value: tex }, uTint: { value: new THREE.Color(0.085, 0.095, 0.18) }, uFog: { value: new THREE.Color() }, opacity: { value: 1 }, uRot: { value: 0 } },
-        vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
-        fragmentShader: /* glsl */ `
-          uniform float uTime; uniform sampler2D tMap; uniform vec3 uTint; uniform vec3 uFog; uniform float opacity; uniform float uRot; varying vec3 vDir;
-          void main(){
-            vec3 d = normalize(vDir);
-            float a = atan(d.z, d.x) + uRot;
-            vec2 uv = vec2(fract(a / 6.28318 + 0.5), acos(clamp(d.y, -1.0, 1.0)) / 3.14159);
-            vec3 col = texture2D(tMap, vec2(uv.x, 1.0 - uv.y)).rgb * uTint;
-            col = mix(uFog, col, smoothstep(-0.01, 0.06, d.y));
-          // estrela cadente: a cada 7s uma risca atravessa o céu
-          float cyc = floor(uTime / 7.0);
-          float ph = fract(uTime / 7.0) / 0.12;
-          if (ph < 1.0) {
-            vec2 sky = vec2(atan(d.z, d.x), asin(clamp(d.y, -1.0, 1.0)));
-            float r1 = fract(sin(cyc * 12.9898) * 43758.5453);
-            float r2 = fract(sin(cyc * 78.233) * 12345.678);
-            vec2 a0 = vec2(-2.4 + r1 * 1.6, 0.45 + r2 * 0.35);
-            vec2 a1 = a0 + vec2(0.55, -0.22);
-            vec2 head = mix(a0, a1, ph);
-            vec2 tail = mix(a0, a1, max(ph - 0.35, 0.0));
-            vec2 pa = sky - tail, ba = head - tail;
-            float hh = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-5), 0.0, 1.0);
-            float dist = length(pa - ba * hh);
-            col += vec3(0.95, 0.92, 1.0) * smoothstep(0.004, 0.0, dist) * hh * sin(ph * 3.14159) * 1.6;
-          }
-            gl_FragColor = vec4(col, opacity);
-            #include <tonemapping_fragment>
-            #include <colorspace_fragment>
-          }`,
-      });
-      dome = new THREE.Mesh(new THREE.SphereGeometry(180, 64, 32), domeMat);
-      dome.renderOrder = 0;
-      dome.frustumCulled = false;
-      // o domo da foto não é mais desenhado: o céu procedural (montanhas e lua) vale para todas as seções
-      dome.visible = false;
-      // a névoa da margem usa a cor média do horizonte da foto
-      const img = tex.image as unknown as { data: Uint16Array | Float32Array; width: number; height: number };
-      const row = Math.floor(img.height * 0.5);
-      const acc = [0, 0, 0];
-      const half = img.data instanceof Uint16Array;
-      for (let x = 0; x < img.width; x += 4) {
-        const i = (row * img.width + x) * 4;
-        for (let c = 0; c < 3; c++) acc[c] += half ? THREE.DataUtils.fromHalfFloat(img.data[i + c]) : (img.data[i + c] as number);
-      }
-      const n = img.width / 4;
-      const h = acc.map((v, c) => (v / n) * [0.085, 0.095, 0.18][c]);
-      void h;
-    }
-
     // A pedra da margem: rocha procedural, achatada em cima, metade dentro d'água.
-    const rockGeo = new THREE.IcosahedronGeometry(1, OLD_SCENE ? 6 : 4);
+    const rockGeo = new THREE.IcosahedronGeometry(1, 4);
     const p = rockGeo.getAttribute('position');
     const v = new THREE.Vector3();
     for (let i = 0; i < p.count; i++) {
@@ -655,147 +556,23 @@ export class World {
       col.set([k - moss * 0.5, k + moss * 0.2, k - moss * 0.3], i * 3);
     }
     rockGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const rock = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({ color: OLD_SCENE ? '#2f3038' : '#1c1d26', roughness: 0.92, metalness: 0.0, vertexColors: true, flatShading: !OLD_SCENE }));
+    const rock = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({ color: '#1c1d26', roughness: 0.92, metalness: 0.0, vertexColors: true, flatShading: true }));
     rock.position.set(0, 0.15, 0);
-    rock.castShadow = true;
-    rock.receiveShadow = true;
     group.add(rock);
-    const top = 0.15 + 0.35 * 1.6 + 0.02;
     // pedras menores ao redor
     [[-2.6, 0.9, 0.6], [2.4, 1.6, 0.45], [-1.2, -1.9, 0.35], [3.4, -0.8, 0.3]].forEach(([x, z, s]) => {
       const m = new THREE.Mesh(rockGeo, rock.material);
       m.scale.setScalar(s);
       m.position.set(x, 0.05, z);
       m.rotation.y = x * 2;
-      m.receiveShadow = true;
       group.add(m);
     });
 
-    // Notebook aberto com os projetos passando na tela.
-    let screenMat: THREE.MeshBasicMaterial | null = null;
-    if (A?.laptop) {
-      const lap = A.laptop;
-      const box = new THREE.Box3().setFromObject(lap);
-      const size = box.getSize(new THREE.Vector3());
-      const s = 1.7 / Math.max(size.x, size.z);
-      lap.scale.setScalar(s);
-      lap.position.set(-0.35, top - box.min.y * s, 0.1);
-      lap.rotation.y = 0.35;
-      lap.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (!m.isMesh) return;
-        m.castShadow = true;
-        m.receiveShadow = true;
-        const mat = m.material as THREE.MeshStandardMaterial;
-        if (mat.name === 'classic_laptop_screen') {
-          // a tela do modelo não tem UV útil: projeta coordenadas no plano da tela
-          const g = m.geometry;
-          const pos = g.getAttribute('position');
-          const nrm = g.getAttribute('normal');
-          const nAvg = new THREE.Vector3();
-          for (let i = 0; i < nrm.count; i++) nAvg.add(new THREE.Vector3().fromBufferAttribute(nrm, i));
-          nAvg.normalize();
-          const vAx = new THREE.Vector3(0, 1, 0).projectOnPlane(nAvg).normalize();
-          const uAx = new THREE.Vector3().crossVectors(vAx, nAvg).normalize();
-          const uv = new Float32Array(pos.count * 2);
-          let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
-          const q = new THREE.Vector3();
-          for (let i = 0; i < pos.count; i++) {
-            q.fromBufferAttribute(pos, i);
-            const uu = q.dot(uAx), vv = q.dot(vAx);
-            uv[i * 2] = uu;
-            uv[i * 2 + 1] = vv;
-            u0 = Math.min(u0, uu); u1 = Math.max(u1, uu); v0 = Math.min(v0, vv); v1 = Math.max(v1, vv);
-          }
-          for (let i = 0; i < pos.count; i++) {
-            uv[i * 2] = (uv[i * 2] - u0) / (u1 - u0);
-            uv[i * 2 + 1] = (uv[i * 2 + 1] - v0) / (v1 - v0);
-          }
-          g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-          screenMat = new THREE.MeshBasicMaterial({ map: this.screenTextures[0], toneMapped: false, color: new THREE.Color(0.85, 0.85, 0.9), side: THREE.DoubleSide });
-          m.material = screenMat;
-        } else if (mat.envMapIntensity !== undefined) {
-          mat.envMapIntensity = 1.1;
-          // o plástico bege do modelo estoura com a luz da lanterna: escurece um pouco
-          mat.color.multiplyScalar(0.72);
-          [mat.map, mat.normalMap, mat.roughnessMap].forEach((t) => t && (t.anisotropy = 8));
-        }
-      });
-      group.add(lap);
-      const glow = new THREE.PointLight('#b9b3ff', 1.2, 4, 2);
-      glow.position.set(-0.2, top + 0.8, 0.9);
-      group.add(glow);
-    }
-
-    // Lanterna com luz quente que tremula e projeta sombras.
+    // Lanterna com luz quente que tremula.
     const lanternLight = new THREE.PointLight('#ffb36b', 0, 14, 1.6);
-    let flame: THREE.Mesh | null = null;
-    if (A?.lantern) {
-      const lan = A.lantern;
-      const box = new THREE.Box3().setFromObject(lan);
-      const size = box.getSize(new THREE.Vector3());
-      const s = 1.15 / size.y;
-      lan.scale.setScalar(s);
-      lan.position.set(1.25, top - box.min.y * s, -0.25);
-      lan.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (!m.isMesh) return;
-        m.castShadow = true;
-        const mat = m.material as THREE.MeshStandardMaterial;
-        if (mat.name === 'Lantern_01_glass') {
-          m.castShadow = false;
-          m.material = new THREE.MeshPhysicalMaterial({ color: '#ffe2b8', roughness: 0.15, transmission: 0.85, thickness: 0.05, emissive: '#ff9a4a', emissiveIntensity: 0.35, transparent: true, opacity: 0.6 });
-        } else if (mat.envMapIntensity !== undefined) mat.envMapIntensity = 1.5;
-      });
-      group.add(lan);
-      flame = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.8, 0.8), toneMapped: false }));
-      flame.scale.y = 1.6;
-      flame.position.set(1.25, top + 0.45, -0.25);
-      group.add(flame);
-      lanternLight.position.set(1.25, top + 0.5, -0.25);
-    }
-    if (!A?.laptop || !A?.lantern) {
-      const props = this.buildProps(group, rock);
-      screenMat = props.screen;
-      flame = props.flame;
-      lanternLight.position.copy(props.light);
-    }
-    if (this.high && OLD_SCENE) {
-      lanternLight.castShadow = true;
-      lanternLight.shadow.mapSize.set(512, 512);
-      lanternLight.shadow.bias = -0.002;
-      lanternLight.shadow.radius = 4;
-    }
+    const { screen: screenMat, flame, light } = this.buildProps(group, rock);
+    lanternLight.position.copy(light);
     group.add(lanternLight);
-
-    // Palavra gigante do outro lado do lago: fica atrás da cena e reflete na água.
-    const wc = document.createElement('canvas');
-    wc.width = 2048;
-    wc.height = 400;
-    const wg = wc.getContext('2d')!;
-    wg.font = '800 330px Montserrat, sans-serif';
-    wg.textAlign = 'center';
-    wg.textBaseline = 'middle';
-    const grad = wg.createLinearGradient(0, 40, 0, 360);
-    grad.addColorStop(0, 'rgba(238,240,246,0.95)');
-    grad.addColorStop(1, 'rgba(165,150,242,0.55)');
-    wg.fillStyle = grad;
-    wg.fillText('SILVADEV', 1024, 215);
-    const wtex = new THREE.CanvasTexture(wc);
-    wtex.colorSpace = THREE.SRGBColorSpace;
-    wtex.anisotropy = 8;
-    const word = new THREE.Mesh(
-      new THREE.PlaneGeometry(34, 6.6),
-      new THREE.MeshBasicMaterial({ map: wtex, transparent: true, depthWrite: false, opacity: 1, fog: false, color: new THREE.Color(0.24, 0.24, 0.31) }),
-    );
-    word.position.set(1.5, 3.2, -24);
-    word.renderOrder = 2; // desenha depois do céu (que é transparente e fica no plano de fundo)
-    void group; // a palavra gigante saiu (menos elementos soltos)
-    this.disposables.push(wtex);
-    this.updaters.push((t) => {
-      word.position.y = 3.2 + Math.sin(t * 0.4) * 0.08;
-      word.visible = this.cur.pz > -20;
-    });
 
     // Luz que acompanha o cursor sobre a água.
     const cursorLight = new THREE.PointLight('#d8ccff', 0, 7, 1.6);
@@ -834,8 +611,8 @@ export class World {
     });
 
     // luar suave vindo de trás, para recortar as silhuetas
-    if (!OLD_SCENE) this.scene.add(new THREE.HemisphereLight('#7d7fc8', '#0b0e18', 0.55));
-    const moon = new THREE.DirectionalLight('#b8c4ff', OLD_SCENE ? 0.7 : 0.9);
+    this.scene.add(new THREE.HemisphereLight('#7d7fc8', '#0b0e18', 0.55));
+    const moon = new THREE.DirectionalLight('#b8c4ff', 0.9);
     moon.position.set(-8, 10, -12);
     this.scene.add(moon);
 
@@ -884,8 +661,8 @@ export class World {
     const apply = (k: number) => {
       const lamp = THREE.MathUtils.smoothstep(k, 0.1, 0.5);
       lanternLight.intensity = 13 * lamp;
-      if (flame) flame.scale.setScalar(Math.max(0.0001, lamp)).setY(Math.max(0.0001, lamp * 1.6));
-      if (screenMat) screenMat.color.setScalar(0.85 * THREE.MathUtils.smoothstep(k, 0.45, 0.8));
+      flame.scale.setScalar(Math.max(0.0001, lamp)).setY(Math.max(0.0001, lamp * 1.6));
+      screenMat.color.setScalar(0.85 * THREE.MathUtils.smoothstep(k, 0.45, 0.8));
       fmat.uniforms.uI.value = THREE.MathUtils.smoothstep(k, 0.6, 1);
     };
     apply(intro);
@@ -898,14 +675,11 @@ export class World {
       playing = false;
       apply(1);
     };
-    let slide = 0;
-    let slideT = 0;
     const near: THREE.Object3D[] = [];
     group.traverse((o) => {
-      if (o !== group && o !== dome && ((o as THREE.Mesh).isMesh || (o as THREE.Points).isPoints)) near.push(o);
+      if (o !== group && ((o as THREE.Mesh).isMesh || (o as THREE.Points).isPoints)) near.push(o);
     });
     let shown = true;
-    let shadowT = 0;
     this.updaters.push((t, dt) => {
       const inRange = this.camera.position.z > -115;
       if (inRange !== shown) {
@@ -913,13 +687,6 @@ export class World {
         near.forEach((o) => (o.visible = inRange));
       }
       if (!inRange) return;
-      // sombra da lanterna: refeita só de vez em quando (nada ali se move)
-      shadowT += dt;
-      if (playing && intro < 1) this.renderer.shadowMap.needsUpdate = true;
-      else if (shadowT > 1) {
-        shadowT = 0;
-        this.renderer.shadowMap.needsUpdate = true;
-      }
       if (playing && intro < 1) {
         intro = Math.min(1, intro + dt / 3);
         apply(intro);
@@ -927,25 +694,10 @@ export class World {
       if (intro >= 1) {
         const fl = 1 + Math.sin(t * 9.3) * 0.06 + Math.sin(t * 23.7) * 0.04 + Math.sin(t * 3.1) * 0.05;
         lanternLight.intensity = 13 * fl;
-        if (flame) flame.scale.set(fl, 1.6 * fl, fl);
-      }
-      // a tela troca de projeto a cada 4 segundos
-      slideT += dt;
-      if (screenMat && slideT > 4) {
-        slideT = 0;
-        slide = (slide + 1) % this.screenTextures.length;
-        screenMat.map = this.screenTextures[slide];
+        flame.scale.set(fl, 1.6 * fl, fl);
       }
       fmat.uniforms.uTime.value = t;
       fmat.uniforms.uPixel.value = this.renderer.getPixelRatio();
-      if (dome) {
-        dome.position.copy(this.camera.position);
-        const dm = dome.material as THREE.ShaderMaterial;
-        dm.uniforms.opacity.value = 1 - THREE.MathUtils.smoothstep(this.cur.fog, 0.3, 0.95);
-        dm.uniforms.uFog.value.copy(this.fog.color);
-        dm.uniforms.uTime.value = t;
-        dome.visible = dm.uniforms.opacity.value > 0.001;
-      }
     });
   }
 
@@ -1042,6 +794,27 @@ export class World {
     const display = new THREE.Mesh(new THREE.PlaneGeometry(1.48, 0.925), screen);
     display.position.set(0, 0.54, 0.002);
     hinge.add(display);
+    // a próxima tela entra por cima com fade; ao terminar, vira a tela de baixo
+    const nextMat = new THREE.MeshBasicMaterial({ map: this.screenTextures[0], toneMapped: false, transparent: true, opacity: 0, color: new THREE.Color(0.85, 0.85, 0.9) });
+    const nextDisplay = new THREE.Mesh(display.geometry, nextMat);
+    nextDisplay.position.set(0, 0.54, 0.0028);
+    hinge.add(nextDisplay);
+    let slide = 0;
+    let slideT = 0;
+    this.updaters.push((_t, dt) => {
+      slideT += dt;
+      if (slideT > 4.5 && this.screenTextures.length > 1) {
+        if (nextMat.opacity === 0) nextMat.map = this.screenTextures[(slide + 1) % this.screenTextures.length];
+        nextMat.opacity = Math.min(1, nextMat.opacity + dt * 1.6);
+        nextMat.color.copy(screen.color);
+        if (nextMat.opacity >= 1) {
+          slide = (slide + 1) % this.screenTextures.length;
+          screen.map = this.screenTextures[slide];
+          nextMat.opacity = 0;
+          slideT = 0;
+        }
+      }
+    });
     // borda lilás fina na tampa e brilho suave da tela sobre o teclado
     const rim = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(1.6, 1.04)), new THREE.LineBasicMaterial({ color: PURPLE, transparent: true, opacity: 0.35 }));
     rim.position.set(0, 0.53, 0.0005);
@@ -1231,28 +1004,26 @@ export class World {
       this.screens.push(screen);
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w + 0.3, h + 0.3, 0.22)), edgeMat);
       edges.position.z = -0.14;
-      const num = new THREE.Mesh(
-        new THREE.PlaneGeometry(9, 9),
-        new THREE.MeshBasicMaterial({ map: numberTexture(String(i + 1).padStart(2, '0')), transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false }),
-      );
-      num.position.set(slot.x < 0 ? -5.5 : 5.5, 1.2, -4);
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: PURPLE, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending }));
       glow.scale.set(16, 11, 1);
       glow.position.z = -1.2;
       g.add(glow, frame, screen, edges);
-      void num;
       this.scene.add(g);
       const baseY = slot.y;
+      // inclinação na direção do cursor quando a placa está sob ele
+      const tilt = new THREE.Vector2();
       this.updaters.push((t) => {
         const dz = this.camera.position.z - slot.z;
         g.visible = dz < 120 && dz > -30;
         if (!g.visible) return;
         g.position.y = baseY + Math.sin(t * 0.8 + i) * 0.18;
         const flip = THREE.MathUtils.smoothstep(dz, 13, 34);
-        g.rotation.y = slot.rotY + flip * (slot.x < 0 ? 1.25 : -1.25);
-        g.scale.setScalar(1 - flip * 0.25);
-        g.rotation.z = Math.sin(t * 0.5 + i * 2) * 0.012;
         const on = this.hovered === i;
+        tilt.lerp(on ? this.pointerCur : new THREE.Vector2(), 0.08);
+        g.rotation.y = slot.rotY + flip * (slot.x < 0 ? 1.25 : -1.25) + tilt.x * 0.22;
+        g.rotation.x = -tilt.y * 0.16;
+        g.scale.setScalar((1 - flip * 0.25) * (1 + (on ? 0.03 : 0)));
+        g.rotation.z = Math.sin(t * 0.5 + i * 2) * 0.012;
         const mat = screen.material as THREE.MeshBasicMaterial;
         const target = on ? 0.95 : 0.62;
         mat.color.r += (target - mat.color.r) * 0.1;

@@ -55,7 +55,7 @@ export function Gate({ progress, ready, suggestLite, onEnter, onGone }: { progre
               Entrar sem som
             </button>
             <button className="gate__lite" onClick={() => enter('lite')} data-cursor>
-              versão leve, sem animações
+              versão leve, sem 3D
             </button>
             {suggestLite && <p className="gate__hint">Seu sistema pede movimento reduzido. A escolha é sua.</p>}
           </div>
