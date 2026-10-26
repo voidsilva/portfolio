@@ -10,6 +10,7 @@ import { Cursor, Hud, ProjectPanel } from './ui/Hud';
 import { Ambient } from './experience/Ambient';
 import { projects } from './data/content';
 import { magnetic, scramble, spotlight, velocitySkew } from './lib/effects';
+import { titleDust } from './lib/titleDust';
 
 type Phase = 'loading' | 'gate' | 'in';
 
@@ -251,11 +252,19 @@ export default function App() {
     });
     const offMag = isCoarse() ? () => undefined : magnetic('.cta, .chip, .hud__nav a', 0.3);
     const offSpot = spotlight('#stack');
+    // mega animação: o nome vira poeira de luz no scroll (depois que a entrada termina)
+    let offDust = () => undefined as void;
+    const dustT = window.setTimeout(() => {
+      const h1 = document.querySelector<HTMLElement>('.hero__name');
+      if (h1) offDust = titleDust(h1, '#hero');
+    }, 3200);
 
     return () => {
       ctx.revert();
       offMag();
       offSpot();
+      window.clearTimeout(dustT);
+      offDust();
       gsap.ticker.remove(tick);
       l.destroy();
       lenis.current = null;

@@ -33,6 +33,7 @@ export interface Rig {
 export type Quality = 'high' | 'low';
 
 const PURPLE = new THREE.Color('#9d8cf0');
+const ZERO2 = new THREE.Vector2();
 const CYAN = new THREE.Color('#8fd3df');
 // Paleta noturna e calma: azul-ardósia com toques de lavanda.
 const HORIZON_TINT = new THREE.Color(0.055, 0.046, 0.1);
@@ -110,7 +111,6 @@ export class World {
     this.high = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.high ? 1.5 : 1));
-    this.dprMax = this.renderer.getPixelRatio();
     this.renderer.debug.checkShaderErrors = import.meta.env.DEV;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
@@ -1052,7 +1052,7 @@ export class World {
         g.position.y = baseY + Math.sin(t * 0.8 + i) * 0.18;
         const flip = THREE.MathUtils.smoothstep(dz, 13, 34);
         const on = this.hovered === i;
-        tilt.lerp(on ? this.pointerCur : new THREE.Vector2(), 0.08);
+        tilt.lerp(on ? this.pointerCur : ZERO2, 0.08);
         g.rotation.y = slot.rotY + flip * (slot.x < 0 ? 1.25 : -1.25) + tilt.x * 0.22;
         g.rotation.x = -tilt.y * 0.16;
         g.scale.setScalar((1 - flip * 0.25) * (1 + (on ? 0.03 : 0)));
@@ -1327,22 +1327,25 @@ export class World {
     }
   };
 
-  /** Qualidade adaptativa: baixa a resolução se o FPS cair, sobe de volta se sobrar folga. */
-  private dprMax = Math.min(window.devicePixelRatio, 1.5);
+  /**
+   * Qualidade adaptativa: só baixa a resolução, e só se o FPS ficar baixo por um tempo.
+   * Cada troca recria os buffers da tela (um quadro piscando e uma travada), então
+   * subir e descer sem parar causava as piscadas; agora são no máximo algumas trocas.
+   */
   private slow = 0;
+  private lastAdapt = 0;
   private adapt() {
+    const now = this.clock.elapsedTime;
+    if (now < 6 || now - this.lastAdapt < 8) return; // ignora a introdução e espera entre trocas
     const dpr = this.renderer.getPixelRatio();
-    if (this.fps < 48) this.slow++;
-    else if (this.fps > 58) this.slow--;
-    let next = dpr;
-    if (this.slow >= 2 && dpr > 0.75) next = Math.max(0.75, dpr - 0.25);
-    if (this.slow <= -6 && dpr < this.dprMax) next = Math.min(this.dprMax, dpr + 0.25);
-    if (next !== dpr) {
-      this.slow = 0;
-      this.renderer.setPixelRatio(next);
-      this.composer.setPixelRatio(next);
-      this.resize();
-    }
+    this.slow = this.fps < 45 ? this.slow + 1 : Math.max(0, this.slow - 1);
+    if (this.slow < 5 || dpr <= 0.75) return;
+    this.slow = 0;
+    this.lastAdapt = now;
+    const next = Math.max(0.75, dpr - 0.25);
+    this.renderer.setPixelRatio(next);
+    this.composer.setPixelRatio(next);
+    this.resize();
   }
 
   private apply(t: number, dt: number) {
