@@ -9,6 +9,7 @@ import { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { LOGO, sampleLogo, toWorld } from './logoShape';
 import { projects } from '../data/content';
 import { haloTexture, numberTexture } from './textures';
@@ -40,7 +41,15 @@ export interface WorldAssets {
 }
 
 /** Carrega os modelos e o céu (CC0, Poly Haven) reportando o progresso. */
+/** Cena antiga (modelos 2k + foto HDR), só para comparação: ?cena-antiga na URL. */
+const OLD_SCENE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('cena-antiga');
+
 export async function loadAssets(onProgress: (k: number) => void): Promise<WorldAssets> {
+  // a cena nova é modelada no código: nada pesado para baixar
+  if (!OLD_SCENE) {
+    onProgress(1);
+    return {};
+  }
   const parts = [0, 0, 0];
   const tick = (i: number) => (e: ProgressEvent) => {
     // o servidor manda o arquivo comprimido: o total informado pode ser menor que o baixado
@@ -626,7 +635,7 @@ export class World {
     }
 
     // A pedra da margem: rocha procedural, achatada em cima, metade dentro d'água.
-    const rockGeo = new THREE.IcosahedronGeometry(1, 6);
+    const rockGeo = new THREE.IcosahedronGeometry(1, OLD_SCENE ? 6 : 4);
     const p = rockGeo.getAttribute('position');
     const v = new THREE.Vector3();
     for (let i = 0; i < p.count; i++) {
@@ -646,7 +655,7 @@ export class World {
       col.set([k - moss * 0.5, k + moss * 0.2, k - moss * 0.3], i * 3);
     }
     rockGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const rock = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({ color: '#2f3038', roughness: 0.95, metalness: 0.0, vertexColors: true }));
+    const rock = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({ color: OLD_SCENE ? '#2f3038' : '#1c1d26', roughness: 0.92, metalness: 0.0, vertexColors: true, flatShading: !OLD_SCENE }));
     rock.position.set(0, 0.15, 0);
     rock.castShadow = true;
     rock.receiveShadow = true;
@@ -745,7 +754,13 @@ export class World {
       group.add(flame);
       lanternLight.position.set(1.25, top + 0.5, -0.25);
     }
-    if (this.high) {
+    if (!A?.laptop || !A?.lantern) {
+      const props = this.buildProps(group, rock);
+      screenMat = props.screen;
+      flame = props.flame;
+      lanternLight.position.copy(props.light);
+    }
+    if (this.high && OLD_SCENE) {
       lanternLight.castShadow = true;
       lanternLight.shadow.mapSize.set(512, 512);
       lanternLight.shadow.bias = -0.002;
@@ -819,7 +834,8 @@ export class World {
     });
 
     // luar suave vindo de trás, para recortar as silhuetas
-    const moon = new THREE.DirectionalLight('#b8c4ff', 0.7);
+    if (!OLD_SCENE) this.scene.add(new THREE.HemisphereLight('#7d7fc8', '#0b0e18', 0.55));
+    const moon = new THREE.DirectionalLight('#b8c4ff', OLD_SCENE ? 0.7 : 0.9);
     moon.position.set(-8, 10, -12);
     this.scene.add(moon);
 
@@ -931,6 +947,170 @@ export class World {
         dome.visible = dm.uniforms.opacity.value > 0.001;
       }
     });
+  }
+
+  /**
+   * Notebook e lanterna modelados no código (sem arquivos 3D): poucas faces,
+   * materiais simples e brilho feito com sprites, em vez de vidro real e sombras.
+   */
+  private buildProps(group: THREE.Group, rock: THREE.Mesh) {
+    // altura real da pedra em cada ponto (o topo não é perfeitamente plano)
+    rock.updateMatrixWorld(true);
+    const ray = new THREE.Raycaster();
+    const down = new THREE.Vector3(0, -1, 0);
+    const yAt = (x: number, z: number) => {
+      ray.set(new THREE.Vector3(x, 10, z), down);
+      return ray.intersectObject(rock, false)[0]?.point.y ?? 0.8;
+    };
+    // apoia pelo ponto mais alto sob a peça, para nada afundar na pedra
+    const restOn = (x: number, z: number, r: number) => Math.max(yAt(x, z), yAt(x + r, z), yAt(x - r, z), yAt(x, z + r), yAt(x, z - r));
+    const top = restOn(-0.35, 0.1, 0.6);
+    const topL = restOn(1.25, -0.25, 0.2);
+    const halo = haloTexture();
+    this.disposables.push(halo);
+    // sombra de contato: um degradê escuro no chão, no lugar do mapa de sombras
+    const sc = document.createElement('canvas');
+    sc.width = sc.height = 128;
+    const sg = sc.getContext('2d')!;
+    const rg = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
+    rg.addColorStop(0, 'rgba(0,0,0,0.75)');
+    rg.addColorStop(0.55, 'rgba(0,0,0,0.35)');
+    rg.addColorStop(1, 'rgba(0,0,0,0)');
+    sg.fillStyle = rg;
+    sg.fillRect(0, 0, 128, 128);
+    const shadowTex = new THREE.CanvasTexture(sc);
+    this.disposables.push(shadowTex);
+    const shadow = (w: number, d: number, x: number, z: number, ry = 0) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, color: 0x000000, opacity: 0.85 }));
+      m.rotation.set(-Math.PI / 2, 0, ry);
+      m.position.set(x, yAt(x, z) + 0.006, z);
+      group.add(m);
+    };
+
+    // ---------- notebook ----------
+    const lap = new THREE.Group();
+    const shell = new THREE.MeshStandardMaterial({ color: '#2a2d3a', metalness: 0.55, roughness: 0.38 });
+    const base = new THREE.Mesh(new RoundedBoxGeometry(1.62, 0.06, 1.1, 3, 0.028), shell);
+    base.position.y = 0.03;
+    lap.add(base);
+    // teclado desenhado uma vez num canvas: teclas escuras com retroiluminação lilás
+    const kc = document.createElement('canvas');
+    kc.width = 512;
+    kc.height = 200;
+    const kg = kc.getContext('2d')!;
+    kg.fillStyle = '#14151c';
+    kg.fillRect(0, 0, 512, 200);
+    const rows = [14, 14, 13, 12, 10];
+    rows.forEach((n, r) => {
+      const kw = 512 / 14.6;
+      const off = (14 - n) * kw * 0.5;
+      for (let i = 0; i < n; i++) {
+        const x = 6 + off + i * kw;
+        const y = 8 + r * 37;
+        const w = r === 4 && i === 4 ? kw * 4.2 : kw - 5;
+        if (r === 4 && i > 4 && i < 8) continue;
+        kg.fillStyle = '#0b0c11';
+        kg.fillRect(x, y, w, 31);
+        kg.fillStyle = 'rgba(165,150,242,0.22)';
+        kg.fillRect(x + 1, y + 29, w - 2, 2);
+      }
+    });
+    const ktex = new THREE.CanvasTexture(kc);
+    ktex.colorSpace = THREE.SRGBColorSpace;
+    ktex.anisotropy = 4;
+    this.disposables.push(ktex);
+    const keys = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.52), new THREE.MeshStandardMaterial({ map: ktex, roughness: 0.7, metalness: 0.1 }));
+    keys.rotation.x = -Math.PI / 2;
+    keys.position.set(0, 0.0605, -0.13);
+    lap.add(keys);
+    const pad = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.3), new THREE.MeshStandardMaterial({ color: '#343846', metalness: 0.4, roughness: 0.3 }));
+    pad.rotation.x = -Math.PI / 2;
+    pad.position.set(0, 0.0605, 0.33);
+    lap.add(pad);
+    // tampa: gira a partir da dobradiça, aberta um pouco além de 90°
+    const hinge = new THREE.Group();
+    hinge.position.set(0, 0.06, -0.54);
+    hinge.rotation.x = -0.32;
+    lap.add(hinge);
+    const lid = new THREE.Mesh(new RoundedBoxGeometry(1.62, 1.06, 0.04, 3, 0.018), shell);
+    lid.position.set(0, 0.53, -0.02);
+    hinge.add(lid);
+    const bezel = new THREE.Mesh(new THREE.PlaneGeometry(1.56, 1.0), new THREE.MeshBasicMaterial({ color: '#07080b' }));
+    bezel.position.set(0, 0.53, 0.0015);
+    hinge.add(bezel);
+    const screen = new THREE.MeshBasicMaterial({ map: this.screenTextures[0], toneMapped: false, color: new THREE.Color(0.85, 0.85, 0.9) });
+    const display = new THREE.Mesh(new THREE.PlaneGeometry(1.48, 0.925), screen);
+    display.position.set(0, 0.54, 0.002);
+    hinge.add(display);
+    // borda lilás fina na tampa e brilho suave da tela sobre o teclado
+    const rim = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(1.6, 1.04)), new THREE.LineBasicMaterial({ color: PURPLE, transparent: true, opacity: 0.35 }));
+    rim.position.set(0, 0.53, 0.0005);
+    hinge.add(rim);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: '#8f86ff', transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.scale.set(2.6, 1.6, 1);
+    glow.position.set(0, 0.5, 0.4);
+    hinge.add(glow);
+    lap.position.set(-0.35, top, 0.1);
+    lap.rotation.y = 0.35;
+    group.add(lap);
+    shadow(2.3, 1.7, -0.35, 0.05, -0.35);
+
+    // ---------- lanterna ----------
+    const lan = new THREE.Group();
+    const metal = new THREE.MeshStandardMaterial({ color: '#3a302a', metalness: 0.7, roughness: 0.42 });
+    const brass = new THREE.MeshStandardMaterial({ color: '#8a6a3a', metalness: 0.8, roughness: 0.35 });
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.08, 24), metal);
+    foot.position.y = 0.04;
+    lan.add(foot);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.012, 8, 32), brass);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.085;
+    lan.add(ring);
+    // vidro: só cor e brilho aditivo (sem transmissão real, que redesenha a cena inteira)
+    const glass = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.145, 0.16, 0.42, 24, 1, true),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.62, 0.32), transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    glass.position.y = 0.3;
+    lan.add(glass);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.46, 6), metal);
+      bar.position.set(Math.cos(a) * 0.175, 0.3, Math.sin(a) * 0.175);
+      lan.add(bar);
+    }
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.21, 0.13, 24), metal);
+    cap.position.y = 0.58;
+    lan.add(cap);
+    const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.08, 16), brass);
+    chimney.position.y = 0.68;
+    lan.add(chimney);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.011, 8, 32, Math.PI), metal);
+    handle.position.y = 0.66;
+    handle.rotation.y = Math.PI / 2;
+    lan.add(handle);
+    const flame = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.8, 0.8), toneMapped: false }));
+    flame.scale.y = 1.6;
+    flame.position.y = 0.3;
+    lan.add(flame);
+    const fglow = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: '#ffae5c', transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+    fglow.scale.set(0.95, 0.95, 1);
+    fglow.position.y = 0.32;
+    lan.add(fglow);
+    lan.position.set(1.25, topL, -0.25);
+    lan.scale.setScalar(1.25);
+    group.add(lan);
+    shadow(1.1, 1.1, 1.25, -0.25);
+    // a chama acende junto com a introdução (a escala da chama já é animada lá fora)
+    this.updaters.push(() => {
+      const k = Math.min(1, flame.scale.x);
+      fglow.material.opacity = 0.6 * k;
+      (glass.material as THREE.MeshBasicMaterial).opacity = 0.08 + 0.18 * k;
+      glow.material.opacity = 0.32 * (screen.color.r / 0.85);
+    });
+
+    const light = new THREE.Vector3(1.25, topL + 0.32 * 1.25, -0.25);
+    return { screen, flame, light };
   }
 
   /** Lanternas de papel acesas subindo devagar sobre o lago (capítulo Abordagem). */
