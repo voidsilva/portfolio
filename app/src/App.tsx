@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import Lenis from 'lenis';
 import { gsap, ScrollTrigger, isCoarse, systemReduced } from './lib/motion';
 import { profile, projects, archive, services, faq, stack, MENU } from './data/content';
@@ -6,6 +7,7 @@ import { Brand, GitHubIcon, LogoMark } from './components/Logo';
 import { Arrow, Btn, Label, Roll, Swap, Words } from './site/bits';
 import { ProjectPanel } from './site/Panel';
 import type { World as WorldT, Pose } from './site/World';
+import { glass, glassRefracts, specular } from './lib/glass';
 
 type Theme = 'light' | 'dark';
 type Quality = 'high' | 'low';
@@ -61,20 +63,73 @@ function poseFor(stage: number): Pose {
   return P[stage] ?? P[0];
 }
 
-/** Cortina de transição: cobre a tela, executa a troca e revela. */
+/** Onda líquida em duas camadas: sobe com a crista curvada, cobre a tela, executa a troca e escorre para cima. */
+function wave(a: number, cover: boolean) {
+  const b = Math.sin(a * Math.PI) * 22;
+  if (cover) {
+    const y = 100 - a * 100;
+    return `M0 100 L0 ${y} Q50 ${y - b} 100 ${y} L100 100 Z`;
+  }
+  const y = 100 - a * 100;
+  return `M0 0 L100 0 L100 ${y} Q50 ${y + b} 0 ${y} Z`;
+}
 function curtain(onCovered: () => void) {
   const el = document.querySelector<HTMLElement>('.curtain');
-  if (!el) return void onCovered();
-  gsap.killTweensOf(el);
+  const [back, front] = el ? Array.from(el.querySelectorAll('path')) : [];
+  if (!el || !back) return void onCovered();
+  const logo = el.querySelector('.curtain__logo');
+  const p = { b: 0, f: 0 };
+  const draw = (cover: boolean) => () => {
+    back.setAttribute('d', wave(p.b, cover));
+    front.setAttribute('d', wave(p.f, cover));
+  };
+  gsap.killTweensOf([el, p, logo]);
   gsap
     .timeline()
     .set(el, { visibility: 'visible' })
-    .fromTo(el, { yPercent: 100 }, { yPercent: 0, duration: 0.75, ease: 'expo.inOut' })
-    .fromTo(el.querySelector('.curtain__logo'), { autoAlpha: 0, y: 20 }, { autoAlpha: 1, y: 0, duration: 0.4 }, 0.4)
+    .call(draw(true))
+    .to(p, { b: 1, duration: 0.8, ease: 'power3.inOut', onUpdate: draw(true) })
+    .to(p, { f: 1, duration: 0.8, ease: 'power3.inOut', onUpdate: draw(true) }, 0.12)
+    .fromTo(logo, { autoAlpha: 0, scale: 0.6 }, { autoAlpha: 1, scale: 1, duration: 0.6, ease: 'elastic.out(1, 0.5)' }, 0.62)
     .call(onCovered)
-    .to(el.querySelector('.curtain__logo'), { autoAlpha: 0, y: -20, duration: 0.3 }, '+=0.2')
-    .to(el, { yPercent: -100, duration: 0.8, ease: 'expo.inOut' }, '<0.05')
-    .set(el, { visibility: 'hidden' });
+    .set(p, { b: 0, f: 0 })
+    .to(logo, { autoAlpha: 0, scale: 0.8, y: -30, duration: 0.35, ease: 'power2.in' }, '+=0.15')
+    .to(p, { f: 1, duration: 0.85, ease: 'power3.inOut', onUpdate: draw(false) }, '<0.1')
+    .to(p, { b: 1, duration: 0.85, ease: 'power3.inOut', onUpdate: draw(false) }, '<0.12')
+    .set(el, { visibility: 'hidden' })
+    .set(logo, { y: 0 });
+}
+
+/**
+ * Pílula de vidro que escorre até o item sob o ponteiro: estica na direção do movimento
+ * e volta ao formato com um leve quique, como uma gota.
+ */
+function pillSlider(list: HTMLElement, items: HTMLElement[]) {
+  const pill = list.querySelector<HTMLElement>('.pill');
+  if (!pill) return () => {};
+  let on = -1;
+  const to = (el: HTMLElement) => {
+    const i = items.indexOf(el);
+    if (i === on) return;
+    const first = on < 0;
+    on = i;
+    const y = el.offsetTop;
+    const h = el.offsetHeight;
+    if (first) gsap.set(pill, { y, height: h });
+    gsap.to(pill, { y, height: h, autoAlpha: 1, duration: 0.75, ease: 'expo.out', overwrite: 'auto' });
+    if (!first) gsap.fromTo(pill, { scaleY: 0.78, scaleX: 1.025 }, { scaleY: 1, scaleX: 1, duration: 1, ease: 'elastic.out(1, 0.45)', overwrite: false });
+  };
+  const enter = (e: Event) => to(e.currentTarget as HTMLElement);
+  const leave = () => {
+    on = -1;
+    gsap.to(pill, { autoAlpha: 0, scaleY: 0.6, duration: 0.45, ease: 'power3.out', overwrite: 'auto' });
+  };
+  items.forEach((it) => it.addEventListener('pointerenter', enter));
+  list.addEventListener('pointerleave', leave);
+  return () => {
+    items.forEach((it) => it.removeEventListener('pointerenter', enter));
+    list.removeEventListener('pointerleave', leave);
+  };
 }
 
 export default function App() {
@@ -83,6 +138,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [menu, setMenu] = useState(false);
   const [panel, setPanel] = useState<number | null>(null);
+  const [active, setActive] = useState('');
   const lenis = useRef<Lenis | null>(null);
   const world = useRef<WorldT | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -95,6 +151,22 @@ export default function App() {
     world.current?.setTheme(theme === 'dark');
     save('sd-theme', theme);
   }, [theme]);
+
+  /** Troca de tema com uma gota que se espalha a partir do botão (onde houver View Transitions). */
+  const flipTheme = (next: Theme, from?: HTMLElement) => {
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => { ready: Promise<void> } };
+    if (!doc.startViewTransition || systemReduced() || next === theme) return setTheme(next);
+    const b = from?.getBoundingClientRect();
+    const x = b ? b.left + b.width / 2 : innerWidth / 2;
+    const y = b ? b.top + b.height / 2 : 0;
+    const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    doc.startViewTransition(() => flushSync(() => setTheme(next))).ready.then(() =>
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+        { duration: 900, easing: 'cubic-bezier(0.7, 0, 0.2, 1)', pseudoElement: '::view-transition-new(root)' },
+      ),
+    );
+  };
 
   /* ---------- carregamento: 000% → 100% ---------- */
   useEffect(() => {
@@ -130,7 +202,7 @@ export default function App() {
       gsap
         .timeline({ delay: 0.25, onComplete: () => setLoaded(true) })
         .to('.loader__in > *', { yPercent: -120, autoAlpha: 0, duration: 0.6, stagger: 0.05, ease: 'power3.in' })
-        .to(el, { yPercent: -100, duration: 1, ease: 'expo.inOut' }, '-=0.15')
+        .to(el, { yPercent: -100, borderBottomLeftRadius: '50% 34vh', borderBottomRightRadius: '50% 34vh', duration: 1.15, ease: 'expo.inOut' }, '-=0.15')
         .call(() => document.documentElement.classList.remove('is-loading'), undefined, '-=0.7');
     });
     return () => {
@@ -152,10 +224,9 @@ export default function App() {
     l.on('scroll', (e: Lenis) => {
       ScrollTrigger.update();
       world.current?.setVelocity(e.velocity);
-      // cabeçalho some descendo e volta subindo
+      // descendo, a cápsula do topo se recolhe um pouco (como a barra do iPhone); subindo, volta
       const y = e.scroll;
-      head?.classList.toggle('is-hidden', y > 200 && y > last);
-      head?.classList.toggle('is-solid', y > 40);
+      if (Math.abs(y - last) > 4) head?.classList.toggle('is-compact', y > 200 && y > last);
       last = y;
     });
     const raf = (t: number) => l.raf(t * 1000);
@@ -174,7 +245,7 @@ export default function App() {
     lenis.current?.start();
     const ctx = gsap.context(() => {
       // entrada do topo
-      gsap.fromTo('.hero .w > span', { yPercent: 110 }, { yPercent: 0, duration: 1.3, stagger: 0.05, ease: 'expo.out' });
+      gsap.fromTo('.hero .w > span', { yPercent: 110, filter: 'blur(14px)' }, { yPercent: 0, filter: 'blur(0px)', duration: 1.4, stagger: 0.06, ease: 'expo.out', clearProps: 'filter' });
       gsap.fromTo('.hero__fade', { autoAlpha: 0, y: 20 }, { autoAlpha: 1, y: 0, duration: 1.1, stagger: 0.08, ease: 'power3.out', delay: 0.5 });
       gsap.fromTo('.stage', { autoAlpha: 0 }, { autoAlpha: 1, duration: 1.2, ease: 'power2.out' });
       // ambiente 3D: cada seção pede uma forma; a troca é animada no shader
@@ -196,16 +267,21 @@ export default function App() {
         );
       }
 
+      // a bolha da cápsula do topo acompanha a seção visível
+      ['abordagem', 'trabalhos', 'servicos', 'contato'].forEach((id) =>
+        ScrollTrigger.create({ trigger: `#${id}`, start: 'top 50%', end: 'bottom 50%', onToggle: (st) => setActive((a) => (st.isActive ? id : a === id ? '' : a)) }),
+      );
+
       // títulos: palavras sobem ao entrar na tela
       gsap.utils.toArray<HTMLElement>('main [data-reveal="words"]').forEach((el) => {
         if (el.closest('.hero')) return;
-        gsap.fromTo(el.querySelectorAll('.w > span'), { yPercent: 110 }, { yPercent: 0, duration: 1.1, stagger: 0.035, ease: 'expo.out', scrollTrigger: { trigger: el, start: 'top 88%' } });
+        gsap.fromTo(el.querySelectorAll('.w > span'), { yPercent: 110, filter: 'blur(12px)' }, { yPercent: 0, filter: 'blur(0px)', duration: 1.2, stagger: 0.045, ease: 'expo.out', clearProps: 'filter', scrollTrigger: { trigger: el, start: 'top 88%' } });
       });
       // blocos simples
-      gsap.set('[data-fade]', { autoAlpha: 0, y: 34 });
+      gsap.set('[data-fade]', { autoAlpha: 0, y: 34, filter: 'blur(10px)' });
       ScrollTrigger.batch('[data-fade]', {
         start: 'top 90%',
-        onEnter: (els) => gsap.to(els, { autoAlpha: 1, y: 0, duration: 1, stagger: 0.07, ease: 'power3.out', overwrite: true }),
+        onEnter: (els) => gsap.to(els, { autoAlpha: 1, y: 0, filter: 'blur(0px)', duration: 1.1, stagger: 0.07, ease: 'power3.out', overwrite: true, clearProps: 'filter' }),
       });
       // linhas das listas se desenham
       gsap.utils.toArray<HTMLElement>('.rule').forEach((el) =>
@@ -326,7 +402,85 @@ export default function App() {
     };
   }, [loaded]);
 
-  /* ---------- botões magnéticos e cursor ---------- */
+  /* ---------- vidro líquido: refração, brilho, aperto elástico e pílulas ---------- */
+  useEffect(() => {
+    if (!loaded) return;
+    const offs: (() => void)[] = [specular()];
+    if (glassRefracts()) {
+      document.documentElement.classList.add('lg-refract');
+      document.querySelectorAll<HTMLElement>('.head__nav, .brand, .head .chip:not(.chip--solid)').forEach((el) => offs.push(glass(el, { bezel: 16, scale: 46 })));
+      document.querySelectorAll<HTMLElement>('.pill').forEach((el) => offs.push(glass(el, { bezel: 24, scale: 70, blur: 2 })));
+      const drop = document.querySelector<HTMLElement>('.cursor__drop');
+      if (drop && !isCoarse()) offs.push(glass(drop, { bezel: 30, scale: 44, blur: 0.3, lens: 0.26, sat: 1.4 }));
+    }
+    // apertar: o elemento achata e volta com quique, como gelatina
+    const sel = '.chip, .btn, .brand, .seg button, .menu__link, .work__row, .panel__close';
+    const down = (e: PointerEvent) => {
+      const el = (e.target as Element).closest<HTMLElement>(sel);
+      if (!el || systemReduced()) return;
+      gsap.to(el, { scaleX: 1.05, scaleY: 0.93, duration: 0.16, ease: 'power2.out', overwrite: 'auto' });
+      const up = () => {
+        gsap.to(el, { scaleX: 1, scaleY: 1, duration: 1.1, ease: 'elastic.out(1, 0.3)', overwrite: 'auto' });
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+      };
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointerdown', down);
+    offs.push(() => window.removeEventListener('pointerdown', down));
+    if (!isCoarse()) {
+      document.querySelectorAll<HTMLElement>('.work__list, .svc__list').forEach((list) =>
+        offs.push(pillSlider(list, Array.from(list.querySelectorAll<HTMLElement>(':scope > li:not(.pill)')))),
+      );
+    }
+    return () => offs.forEach((f) => f());
+  }, [loaded]);
+
+  /* ---------- bolha da cápsula do topo: escorre entre os itens, a borda da frente vai primeiro ---------- */
+  useEffect(() => {
+    const nav = document.querySelector<HTMLElement>('.head__nav');
+    const blob = nav?.querySelector<HTMLElement>('.head__blob');
+    if (!nav || !blob) return;
+    const st = { l: 0, r: 0 };
+    const paint = () => {
+      const w = st.r - st.l;
+      blob.style.transform = `translateX(${st.l}px)`;
+      blob.style.width = `${w}px`;
+    };
+    let cur: HTMLElement | null = null;
+    const to = (a: HTMLElement | null) => {
+      if (a === cur) return;
+      const had = cur;
+      cur = a;
+      if (!a) return void gsap.to(blob, { autoAlpha: 0, scale: 0.7, duration: 0.4, ease: 'power3.out' });
+      const l = a.offsetLeft;
+      const r = l + a.offsetWidth;
+      if (!had) {
+        Object.assign(st, { l, r });
+        paint();
+        gsap.fromTo(blob, { autoAlpha: 0, scale: 0.6 }, { autoAlpha: 1, scale: 1, duration: 0.9, ease: 'elastic.out(1, 0.5)' });
+        return;
+      }
+      const right = l > st.l;
+      gsap.to(st, { r, duration: right ? 0.45 : 0.75, delay: right ? 0 : 0.09, ease: right ? 'power3.out' : 'elastic.out(1, 0.6)', onUpdate: paint, overwrite: false });
+      gsap.to(st, { l, duration: right ? 0.75 : 0.45, delay: right ? 0.09 : 0, ease: right ? 'elastic.out(1, 0.6)' : 'power3.out', onUpdate: paint, overwrite: false });
+      gsap.fromTo(blob, { scaleY: 0.72 }, { scaleY: 1, duration: 0.9, ease: 'elastic.out(1, 0.4)' });
+    };
+    const links = Array.from(nav.querySelectorAll<HTMLElement>('a'));
+    const activeEl = () => links.find((a) => a.dataset.id === active) ?? null;
+    to(activeEl());
+    const over = (e: Event) => to(e.currentTarget as HTMLElement);
+    const out = () => to(activeEl());
+    links.forEach((a) => a.addEventListener('pointerenter', over));
+    nav.addEventListener('pointerleave', out);
+    return () => {
+      links.forEach((a) => a.removeEventListener('pointerenter', over));
+      nav.removeEventListener('pointerleave', out);
+    };
+  }, [active]);
+
+  /* ---------- botões magnéticos e cursor de gota ---------- */
   useEffect(() => {
     if (!loaded || isCoarse()) return;
     const offs = Array.from(document.querySelectorAll<HTMLElement>('[data-magnetic]')).map((el) => {
@@ -345,21 +499,48 @@ export default function App() {
         el.removeEventListener('pointerleave', out);
       };
     });
+    // a gota segue o ponteiro com atraso, estica na direção da velocidade e muda de tamanho pelo alvo
     const cur = document.querySelector<HTMLElement>('.cursor')!;
-    const cx = gsap.quickTo(cur, 'x', { duration: 0.35, ease: 'power3' });
-    const cy = gsap.quickTo(cur, 'y', { duration: 0.35, ease: 'power3' });
+    const drop = cur.querySelector<HTMLElement>('.cursor__drop')!;
+    const reduced = systemReduced();
+    const s = { tx: -200, ty: -200, x: -200, y: -200, st: 0, a: 0, k: 0.46, kt: 0.46, sq: 0 };
+    document.documentElement.classList.add('has-cursor');
     const move = (e: PointerEvent) => {
       cur.classList.add('is-on');
-      cx(e.clientX);
-      cy(e.clientY);
+      s.tx = e.clientX;
+      s.ty = e.clientY;
       const t = e.target as HTMLElement;
-      cur.classList.toggle('is-link', !!t.closest('a, button, summary'));
-      cur.classList.toggle('is-view', !!t.closest('.work__row'));
+      const view = !!t.closest('.work__row');
+      const link = !view && !!t.closest('a, button, summary, [tabindex]');
+      cur.classList.toggle('is-link', link);
+      cur.classList.toggle('is-view', view);
+      s.kt = view ? 1.15 : link ? 0.7 : 0.46;
     };
+    const press = () => (s.sq = 1);
+    const tick = () => {
+      const dx = s.tx - s.x;
+      const dy = s.ty - s.y;
+      s.x += dx * 0.2;
+      s.y += dy * 0.2;
+      const v = Math.hypot(dx, dy);
+      s.st += (Math.min(v / 90, 0.5) - s.st) * 0.18;
+      if (v > 1) s.a = Math.atan2(dy, dx);
+      s.k += (s.kt - s.k) * 0.14;
+      s.sq *= 0.86;
+      const st = reduced ? 0 : s.st;
+      const k = s.k * (1 - s.sq * 0.2);
+      cur.style.transform = `translate3d(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px, 0)`;
+      drop.style.transform = `rotate(${s.a.toFixed(3)}rad) scale(${(k * (1 + st)).toFixed(3)}, ${(k * (1 - st * 0.45)).toFixed(3)})`;
+    };
+    gsap.ticker.add(tick);
     window.addEventListener('pointermove', move);
+    window.addEventListener('pointerdown', press);
     return () => {
       offs.forEach((f) => f());
+      gsap.ticker.remove(tick);
       window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerdown', press);
+      document.documentElement.classList.remove('has-cursor');
     };
   }, [loaded]);
 
@@ -372,13 +553,20 @@ export default function App() {
   useEffect(() => {
     const el = document.querySelector<HTMLElement>('.menu')!;
     gsap.killTweensOf(el);
+    const b = document.querySelector('.chip--menu')?.getBoundingClientRect();
+    const at = b ? `${Math.round(b.left + b.width / 2)}px ${Math.round(b.top + b.height / 2)}px` : '100% 0%';
+    const r = Math.hypot(innerWidth, innerHeight);
     if (menu) {
       gsap.set(el, { visibility: 'visible' });
-      gsap.fromTo(el, { clipPath: 'inset(0% 0% 100% 0%)' }, { clipPath: 'inset(0% 0% 0% 0%)', duration: 0.9, ease: 'expo.inOut' });
-      gsap.fromTo(el.querySelectorAll('.menu__link > span'), { yPercent: 110 }, { yPercent: 0, duration: 1, stagger: 0.05, ease: 'expo.out', delay: 0.35 });
+      gsap.fromTo(el, { clipPath: `circle(0px at ${at})` }, { clipPath: `circle(${r}px at ${at})`, duration: 1.1, ease: 'expo.inOut' });
+      gsap.fromTo(
+        el.querySelectorAll('.menu__link > span'),
+        { yPercent: 110, filter: 'blur(10px)' },
+        { yPercent: 0, filter: 'blur(0px)', duration: 1.1, stagger: 0.06, ease: 'expo.out', delay: 0.35, clearProps: 'filter' },
+      );
       gsap.fromTo(el.querySelectorAll('.menu__side > *'), { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: 0.8, stagger: 0.05, ease: 'power3.out', delay: 0.5 });
     } else if (el.style.visibility === 'visible') {
-      gsap.to(el, { clipPath: 'inset(0% 0% 100% 0%)', duration: 0.7, ease: 'expo.inOut', onComplete: () => void gsap.set(el, { visibility: 'hidden' }) });
+      gsap.to(el, { clipPath: `circle(0px at ${at})`, duration: 0.8, ease: 'expo.inOut', onComplete: () => void gsap.set(el, { visibility: 'hidden' }) });
     }
     const key = (e: KeyboardEvent) => e.key === 'Escape' && setMenu(false);
     window.addEventListener('keydown', key);
@@ -429,28 +617,32 @@ export default function App() {
 
       {/* cabeçalho */}
       <header className="head">
-        <a href="#top" className="brand" onClick={link('top')} aria-label="SilvaDev, voltar ao início">
+        <a href="#top" className="brand lg" onClick={link('top')} aria-label="SilvaDev, voltar ao início">
           <Brand />
         </a>
-        <nav className="head__nav" aria-label="Principal">
-          <a href="#abordagem" onClick={link('abordagem')}>
-            <Roll>Abordagem</Roll>
-          </a>
-          <a href="#trabalhos" onClick={link('trabalhos')}>
-            <Roll>Projetos</Roll>
-          </a>
-          <a href="#servicos" onClick={link('servicos')}>
-            <Roll>Serviços</Roll>
-          </a>
-          <a href="#contato" onClick={link('contato')}>
-            <Roll>Contato</Roll>
-          </a>
+        <nav className="head__nav lg" aria-label="Principal">
+          <span className="head__blob" aria-hidden="true" />
+          {[
+            ['abordagem', 'Abordagem'],
+            ['trabalhos', 'Projetos'],
+            ['servicos', 'Serviços'],
+            ['contato', 'Contato'],
+          ].map(([id, l]) => (
+            <a key={id} href={`#${id}`} data-id={id} className={active === id ? 'on' : undefined} onClick={link(id)}>
+              <Roll>{l}</Roll>
+            </a>
+          ))}
         </nav>
         <div className="head__actions">
-          <button type="button" className="chip" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} aria-label={theme === 'dark' ? 'Usar tema claro' : 'Usar tema escuro'}>
+          <button
+            type="button"
+            className="chip chip--icon lg"
+            onClick={(e) => flipTheme(theme === 'dark' ? 'light' : 'dark', e.currentTarget)}
+            aria-label={theme === 'dark' ? 'Usar tema claro' : 'Usar tema escuro'}
+          >
             <span className="chip__moon" aria-hidden="true" />
           </button>
-          <button type="button" className={`chip chip--menu${menu ? ' is-open' : ''}`} onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-controls="menu">
+          <button type="button" className={`chip chip--menu lg${menu ? ' is-open' : ''}`} onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-controls="menu">
             <span className="burger" aria-hidden="true">
               <i />
               <i />
@@ -488,10 +680,10 @@ export default function App() {
           <div className="menu__set">
             <span>Tema</span>
             <div className="seg" role="group" aria-label="Tema">
-              <button type="button" className={theme === 'light' ? 'on' : ''} aria-pressed={theme === 'light'} onClick={() => setTheme('light')}>
+              <button type="button" className={theme === 'light' ? 'on' : ''} aria-pressed={theme === 'light'} onClick={(e) => flipTheme('light', e.currentTarget)}>
                 Claro
               </button>
-              <button type="button" className={theme === 'dark' ? 'on' : ''} aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}>
+              <button type="button" className={theme === 'dark' ? 'on' : ''} aria-pressed={theme === 'dark'} onClick={(e) => flipTheme('dark', e.currentTarget)}>
                 Escuro
               </button>
             </div>
@@ -514,7 +706,14 @@ export default function App() {
       </div>
 
       <div className="stage" aria-hidden="true">
-        {quality === 'high' ? <canvas ref={canvas} /> : <div className="hero__orb" />}
+        {quality === 'high' ? (
+          <canvas ref={canvas} />
+        ) : (
+          <>
+            <div className="aura" />
+            <div className="hero__orb" />
+          </>
+        )}
       </div>
 
       <main id="top">
@@ -587,6 +786,7 @@ export default function App() {
           </div>
           <span className="rule" />
           <ul className="work__list" data-stage="3">
+            <li className="pill lg" aria-hidden="true" />
             {projects.map((p, i) => (
               <li key={p.id}>
                 <button type="button" className="work__row" data-i={i} onClick={() => setPanel(i)} data-fade>
@@ -645,6 +845,7 @@ export default function App() {
           </div>
           <span className="rule" />
           <ol className="svc__list">
+            <li className="pill lg" aria-hidden="true" />
             {services.map((s, i) => (
               <li key={s.name} data-fade tabIndex={0}>
                 <span className="svc__n">{String(i + 1).padStart(3, '0')}</span>
@@ -762,10 +963,21 @@ export default function App() {
 
       <ProjectPanel index={panel} onClose={() => setPanel(null)} />
       <div className="curtain" aria-hidden="true" style={{ visibility: 'hidden' }}>
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="cg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="#8b5cf6" />
+              <stop offset="1" stopColor="#5b2fe0" />
+            </linearGradient>
+          </defs>
+          <path className="curtain__back" />
+          <path className="curtain__front" fill="url(#cg)" />
+        </svg>
         <LogoMark className="curtain__logo" />
       </div>
       <div className="cursor" aria-hidden="true">
-        <span>Ver</span>
+        <span className="cursor__drop lg" />
+        <span className="cursor__label">Ver</span>
       </div>
     </>
   );
