@@ -5,7 +5,7 @@ import { profile, projects, archive, services, faq, stack, MENU } from './data/c
 import { Brand, GitHubIcon, LogoMark } from './components/Logo';
 import { Arrow, Btn, Label, Roll, Swap, Words } from './site/bits';
 import { ProjectPanel } from './site/Panel';
-import type { Blob as BlobT } from './site/Blob';
+import type { World as WorldT, Pose } from './site/World';
 
 type Theme = 'light' | 'dark';
 type Quality = 'high' | 'low';
@@ -40,6 +40,27 @@ function defaultQuality(): Quality {
   return systemReduced() || weak || !hasWebGL() ? 'low' : 'high';
 }
 
+/** Onde o objeto 3D fica em cada forma (desktop: ao lado do texto; celular: centralizado e mais apagado). */
+function poseFor(stage: number): Pose {
+  const m = innerWidth < 820;
+  const P: Record<number, Pose> = m
+    ? {
+        0: { x: 0, y: 0, z: -2, rx: 0, ry: 0, s: 1.1, a: 0.22 },
+        1: { x: 0.5, y: 0.55, z: 0, rx: 0.42, ry: -0.62, s: 0.55, a: 1 },
+        2: { x: 0, y: 0, z: 0, rx: 0.1, ry: 0.2, s: 0.8, a: 0.4 },
+        3: { x: 0, y: 1.6, z: 0, rx: 0.08, ry: -0.2, s: 0.55, a: 0.5 },
+        4: { x: 0.3, y: 1.4, z: 0, rx: 0.5, ry: -0.7, s: 0.6, a: 0.45 },
+      }
+    : {
+        0: { x: 0, y: 0, z: -2, rx: 0, ry: 0, s: 1.3, a: 0.35 },
+        1: { x: 2.7, y: -0.1, z: 0, rx: 0.42, ry: -0.62, s: 1, a: 1 },
+        2: { x: -3.6, y: 0, z: -1, rx: 0.1, ry: -0.75, s: 0.85, a: 0.85 },
+        3: { x: 2.55, y: 0, z: 0, rx: 0.06, ry: -0.34, s: 0.78, a: 1 },
+        4: { x: 3, y: -0.2, z: 0, rx: 0.5, ry: -0.7, s: 0.95, a: 1 },
+      };
+  return P[stage] ?? P[0];
+}
+
 /** Cortina de transição: cobre a tela, executa a troca e revela. */
 function curtain(onCovered: () => void) {
   const el = document.querySelector<HTMLElement>('.curtain');
@@ -63,7 +84,7 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const [panel, setPanel] = useState<number | null>(null);
   const lenis = useRef<Lenis | null>(null);
-  const blob = useRef<BlobT | null>(null);
+  const world = useRef<WorldT | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const count = useRef<HTMLSpanElement>(null);
 
@@ -71,7 +92,7 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#08090D' : '#F1ECFB');
-    blob.current?.setTheme(theme === 'dark');
+    world.current?.setTheme(theme === 'dark');
     save('sd-theme', theme);
   }, [theme]);
 
@@ -85,7 +106,7 @@ export default function App() {
         document.fonts.load(f).catch(() => null),
       ),
     ).then(() => (real.v += 0.5));
-    const three = quality === 'high' ? import('./site/Blob').then((m) => ((real.v += 0.5), m)) : Promise.resolve((real.v += 0.5, null));
+    const three = quality === 'high' ? import('./site/World').then((m) => ((real.v += 0.5), m)) : Promise.resolve((real.v += 0.5, null));
     // o contador anda sozinho e espera o carregamento real nos últimos pontos
     const tick = gsap.to(shown, {
       v: 100,
@@ -100,7 +121,11 @@ export default function App() {
     Promise.all([fonts, three, new Promise((r) => setTimeout(r, 1600))]).then(([, mod]) => {
       if (!alive) return;
       if (count.current) count.current.textContent = '100';
-      if (mod && canvas.current) blob.current = new mod.Blob(canvas.current, document.documentElement.dataset.theme === 'dark');
+      if (mod && canvas.current) {
+        world.current = new mod.World(canvas.current, document.documentElement.dataset.theme === 'dark');
+        world.current.loadProjects(projects.map((p) => (p.preview.kind === 'image' ? p.preview.src : '')));
+        document.documentElement.classList.add('has-3d');
+      }
       const el = document.querySelector('.loader');
       gsap
         .timeline({ delay: 0.25, onComplete: () => setLoaded(true) })
@@ -111,8 +136,8 @@ export default function App() {
     return () => {
       alive = false;
       tick.kill();
-      blob.current?.dispose();
-      blob.current = null;
+      world.current?.dispose();
+      world.current = null;
     };
     // a qualidade só muda recarregando a página
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,7 +151,7 @@ export default function App() {
     let last = 0;
     l.on('scroll', (e: Lenis) => {
       ScrollTrigger.update();
-      blob.current?.setVelocity(e.velocity);
+      world.current?.setVelocity(e.velocity);
       // cabeçalho some descendo e volta subindo
       const y = e.scroll;
       head?.classList.toggle('is-hidden', y > 200 && y > last);
@@ -151,11 +176,25 @@ export default function App() {
       // entrada do topo
       gsap.fromTo('.hero .w > span', { yPercent: 110 }, { yPercent: 0, duration: 1.3, stagger: 0.05, ease: 'expo.out' });
       gsap.fromTo('.hero__fade', { autoAlpha: 0, y: 20 }, { autoAlpha: 1, y: 0, duration: 1.1, stagger: 0.08, ease: 'power3.out', delay: 0.5 });
-      gsap.fromTo('.hero__blob', { autoAlpha: 0 }, { autoAlpha: 1, duration: 1.2, ease: 'power2.out' });
-      // o caos vira sistema na entrada; ao rolar, o sistema se desfaz de novo
-      blob.current?.build(3.4);
-      ScrollTrigger.create({ trigger: '.hero', start: 'top top', end: 'bottom top', onUpdate: (st) => blob.current?.setScatter(st.progress * 1.4) });
-      gsap.to('.hero__blob', { yPercent: 18, ease: 'none', scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true } });
+      gsap.fromTo('.stage', { autoAlpha: 0 }, { autoAlpha: 1, duration: 1.2, ease: 'power2.out' });
+      // ambiente 3D: cada seção pede uma forma; a troca é animada no shader
+      const w = world.current;
+      if (w) {
+        const show = (s: number) => {
+          // no celular o texto ocupa a tela toda: fora do topo, as partículas só flutuam ao fundo
+          const stage = innerWidth < 820 && s !== 1 ? 0 : s;
+          const mix = w.goTo(stage);
+          if (mix) gsap.to(mix, { value: 1, duration: 2.2, ease: 'power2.inOut', overwrite: true });
+          gsap.to(w.pose, { ...poseFor(stage), duration: 2.2, ease: 'expo.inOut', overwrite: true });
+        };
+        gsap.set(w.pose, poseFor(1));
+        show(1);
+        // a câmera caminha pelo galpão conforme a página desce
+        ScrollTrigger.create({ trigger: 'main', start: 'top top', end: 'bottom bottom', onUpdate: (st) => w.setTravel(st.progress) });
+        gsap.utils.toArray<HTMLElement>('[data-stage]').forEach((el) =>
+          ScrollTrigger.create({ trigger: el, start: 'top 55%', end: 'bottom 55%', onToggle: (st) => st.isActive && show(Number(el.dataset.stage)) }),
+        );
+      }
 
       // títulos: palavras sobem ao entrar na tela
       gsap.utils.toArray<HTMLElement>('main [data-reveal="words"]').forEach((el) => {
@@ -224,38 +263,66 @@ export default function App() {
     return () => ctx.revert();
   }, [loaded]);
 
-  /* ---------- prévia de projeto que segue o mouse ---------- */
+  /* ---------- projetos: com 3D a tela de partículas mostra o projeto; sem 3D, uma prévia segue o mouse ---------- */
   useEffect(() => {
     if (!loaded || isCoarse()) return;
     const list = document.querySelector<HTMLElement>('.work__list');
     const prev = document.querySelector<HTMLElement>('.preview');
     if (!list || !prev) return;
+    const rows = list.querySelectorAll<HTMLElement>('.work__row');
+    const w = world.current;
+    if (w) {
+      const enter = (e: Event) => {
+        const mix = w.setProject(Number((e.currentTarget as HTMLElement).dataset.i));
+        if (mix) gsap.to(mix, { value: 1, duration: 1.1, ease: 'power2.inOut', overwrite: true });
+      };
+      rows.forEach((r) => r.addEventListener('pointerenter', enter));
+      return () => rows.forEach((r) => r.removeEventListener('pointerenter', enter));
+    }
     const imgs = prev.querySelectorAll<HTMLElement>('.preview__img');
     gsap.set(imgs, { yPercent: 100 });
     const x = gsap.quickTo(prev, 'x', { duration: 0.6, ease: 'power3' });
     const y = gsap.quickTo(prev, 'y', { duration: 0.6, ease: 'power3' });
     const rot = gsap.quickTo(prev, 'rotate', { duration: 0.8, ease: 'power3' });
     let lx = 0;
-    const move = (e: PointerEvent) => {
-      x(e.clientX);
-      y(e.clientY);
-      rot(gsap.utils.clamp(-8, 8, (e.clientX - lx) * 0.4));
-      lx = e.clientX;
+    let px = -1;
+    let py = -1;
+    let shown = -1;
+    const leave = () => {
+      if (shown < 0) return;
+      shown = -1;
+      gsap.to(prev, { scale: 0.6, autoAlpha: 0, duration: 0.4, ease: 'power3.out', overwrite: 'auto' });
     };
-    const enter = (e: Event) => {
-      const i = Number((e.currentTarget as HTMLElement).dataset.i);
+    // confere o que está sob o cursor (também ao rolar, quando o mouse fica parado)
+    const check = () => {
+      const row = px < 0 ? null : (document.elementFromPoint(px, py)?.closest<HTMLElement>('.work__row') ?? null);
+      if (!row) return leave();
+      const i = Number(row.dataset.i);
+      if (i === shown) return;
+      shown = i;
       imgs.forEach((im, k) => gsap.to(im, { yPercent: k === i ? 0 : k < i ? -100 : 100, duration: 0.7, ease: 'expo.out' }));
-      gsap.to(prev, { scale: 1, autoAlpha: 1, duration: 0.5, ease: 'expo.out' });
+      gsap.to(prev, { scale: 1, autoAlpha: 1, duration: 0.5, ease: 'expo.out', overwrite: 'auto' });
     };
-    const leave = () => gsap.to(prev, { scale: 0.6, autoAlpha: 0, duration: 0.4, ease: 'power3.out' });
-    const rows = list.querySelectorAll<HTMLElement>('.work__row');
-    rows.forEach((r) => r.addEventListener('pointerenter', enter));
-    list.addEventListener('pointerleave', leave);
+    const move = (e: PointerEvent) => {
+      px = e.clientX;
+      py = e.clientY;
+      x(px);
+      y(py);
+      rot(gsap.utils.clamp(-8, 8, (px - lx) * 0.4));
+      lx = px;
+      check();
+    };
+    const out = () => {
+      px = -1;
+      leave();
+    };
     window.addEventListener('pointermove', move);
+    document.documentElement.addEventListener('pointerleave', out);
+    lenis.current?.on('scroll', check);
     return () => {
-      rows.forEach((r) => r.removeEventListener('pointerenter', enter));
-      list.removeEventListener('pointerleave', leave);
       window.removeEventListener('pointermove', move);
+      document.documentElement.removeEventListener('pointerleave', out);
+      lenis.current?.off('scroll', check);
     };
   }, [loaded]);
 
@@ -446,12 +513,13 @@ export default function App() {
         </div>
       </div>
 
+      <div className="stage" aria-hidden="true">
+        {quality === 'high' ? <canvas ref={canvas} /> : <div className="hero__orb" />}
+      </div>
+
       <main id="top">
         {/* 01 · topo */}
-        <section className="hero" aria-labelledby="hero-title">
-          <div className="hero__blob" aria-hidden="true">
-            {quality === 'high' ? <canvas ref={canvas} /> : <div className="hero__orb" />}
-          </div>
+        <section className="hero" aria-labelledby="hero-title" data-stage="1">
           <p className="hero__intro hero__fade">
             <b>Oi, eu sou o Paulo.</b> Desenvolvedor full stack. Cuido de cada parte do sistema, do banco de dados à tela, para empresas que querem
             sair da planilha.
@@ -470,7 +538,7 @@ export default function App() {
         </section>
 
         {/* 02 · abordagem */}
-        <section className="approach" id="abordagem">
+        <section className="approach" id="abordagem" data-stage="2">
           <Label n="01">Abordagem</Label>
           <h2 className="approach__title">
             <Words text="Construo *mais* que telas" />
@@ -487,7 +555,7 @@ export default function App() {
         </section>
 
         {/* 03 · afirmações */}
-        <section className="claims" aria-label="Princípios">
+        <section className="claims" aria-label="Princípios" data-stage="0">
           {[
             { l: 'Código', t: 'Tecnologia *a serviço* da operação', p: 'Nada de tecnologia pela tecnologia. Cada escolha resolve um problema que existe hoje na empresa.' },
             { l: 'Design', t: 'Beleza *com motivo*', p: 'Interface clara reduz erro, treinamento e retrabalho. Bonito é o que funciona sem explicação.' },
@@ -518,7 +586,7 @@ export default function App() {
             <span>Ano</span>
           </div>
           <span className="rule" />
-          <ul className="work__list">
+          <ul className="work__list" data-stage="3">
             {projects.map((p, i) => (
               <li key={p.id}>
                 <button type="button" className="work__row" data-i={i} onClick={() => setPanel(i)} data-fade>
@@ -541,7 +609,7 @@ export default function App() {
             {projects.map((p) => (p.preview.kind === 'image' ? <img key={p.id} className="preview__img" src={p.preview.src} alt="" /> : null))}
           </div>
 
-          <div className="more">
+          <div className="more" data-stage="0">
             <Label>Mais trabalhos</Label>
             <ul className="more__list">
               {archive.map((a) => (
@@ -570,7 +638,7 @@ export default function App() {
         </section>
 
         {/* 05 · serviços */}
-        <section className="svc" id="servicos" aria-labelledby="svc-title">
+        <section className="svc" id="servicos" aria-labelledby="svc-title" data-stage="4">
           <div className="sec-head">
             <Label n="03">O que eu faço</Label>
             <Words text="Do banco de dados *até a tela*" as="h2" className="sec-title" />
@@ -589,7 +657,7 @@ export default function App() {
         </section>
 
         {/* 06 · números */}
-        <section className="stats" aria-label="Números">
+        <section className="stats" aria-label="Números" data-stage="0">
           <Label n="04">Em números</Label>
           <div className="stats__grid">
             {[
