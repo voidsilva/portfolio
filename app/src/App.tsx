@@ -409,6 +409,7 @@ export default function App() {
     if (glassRefracts()) {
       document.documentElement.classList.add('lg-refract');
       document.querySelectorAll<HTMLElement>('.head__nav, .brand, .head .chip:not(.chip--solid)').forEach((el) => offs.push(glass(el, { bezel: 16, scale: 46 })));
+      document.querySelectorAll<HTMLElement>('.stat').forEach((el) => offs.push(glass(el, { bezel: 22, scale: 50, blur: 1.5 })));
       document.querySelectorAll<HTMLElement>('.pill').forEach((el) => offs.push(glass(el, { bezel: 24, scale: 70, blur: 2 })));
       const drop = document.querySelector<HTMLElement>('.cursor__drop');
       if (drop && !isCoarse()) offs.push(glass(drop, { bezel: 30, scale: 44, blur: 0.3, lens: 0.26, sat: 1.4 }));
@@ -433,6 +434,72 @@ export default function App() {
       document.querySelectorAll<HTMLElement>('.work__list, .svc__list').forEach((list) =>
         offs.push(pillSlider(list, Array.from(list.querySelectorAll<HTMLElement>(':scope > li:not(.pill)')))),
       );
+    }
+    return () => offs.forEach((f) => f());
+  }, [loaded]);
+
+  /* ---------- contato: gotas que se fundem e seguem o ponteiro; rodapé: nome que ondula como água ---------- */
+  useEffect(() => {
+    if (!loaded) return;
+    const cta = document.querySelector<HTMLElement>('.cta');
+    const goo = cta?.querySelector<HTMLElement>('.goo');
+    const me = goo?.querySelector<HTMLElement>('.goo__me');
+    const word = document.querySelector<HTMLElement>('.foot__word');
+    const disp = document.querySelector('#ripple feDisplacementMap');
+    const turb = document.querySelector('#ripple feTurbulence');
+    const offs: (() => void)[] = [];
+    if (cta && goo && me) {
+      // as gotas só se mexem com o contato na tela
+      const io = new IntersectionObserver(([e]) => goo.classList.toggle('is-on', e.isIntersecting));
+      io.observe(cta);
+      offs.push(() => io.disconnect());
+      if (!isCoarse()) {
+        const x = gsap.quickTo(me, 'x', { duration: 1.2, ease: 'power3' });
+        const y = gsap.quickTo(me, 'y', { duration: 1.2, ease: 'power3' });
+        const move = (e: PointerEvent) => {
+          const b = goo.getBoundingClientRect();
+          x(e.clientX - b.left - b.width / 2);
+          y(e.clientY - b.top - b.height / 2);
+        };
+        const out = () => (x(0), y(0));
+        cta.addEventListener('pointermove', move);
+        cta.addEventListener('pointerleave', out);
+        offs.push(() => (cta.removeEventListener('pointermove', move), cta.removeEventListener('pointerleave', out)));
+      }
+    }
+    if (word && disp && turb && !isCoarse() && !systemReduced()) {
+      const r = { s: 0, t: 0 };
+      const paint = () => {
+        disp.setAttribute('scale', r.s.toFixed(1));
+        turb.setAttribute('baseFrequency', `${(0.004 + Math.sin(r.t) * 0.0015).toFixed(4)} ${(0.018 + Math.cos(r.t * 0.7) * 0.006).toFixed(4)}`);
+      };
+      const flow = () => {
+        r.t += 0.035;
+        paint();
+      };
+      const enter = () => {
+        word.classList.add('is-wet');
+        gsap.ticker.add(flow);
+        gsap.to(r, { s: 40, duration: 0.8, ease: 'power2.out', overwrite: true });
+      };
+      const leave = () =>
+        gsap.to(r, {
+          s: 0,
+          duration: 1.4,
+          ease: 'elastic.out(1, 0.4)',
+          overwrite: true,
+          onComplete: () => {
+            gsap.ticker.remove(flow);
+            word.classList.remove('is-wet');
+          },
+        });
+      word.addEventListener('pointerenter', enter);
+      word.addEventListener('pointerleave', leave);
+      offs.push(() => {
+        word.removeEventListener('pointerenter', enter);
+        word.removeEventListener('pointerleave', leave);
+        gsap.ticker.remove(flow);
+      });
     }
     return () => offs.forEach((f) => f());
   }, [loaded]);
@@ -867,7 +934,7 @@ export default function App() {
               { n: stack.length, l: 'tecnologias em uso' },
               { n: profile.since, l: 'no GitHub desde' },
             ].map((s) => (
-              <div className="stat" key={s.l} data-fade>
+              <div className="stat lg" key={s.l} data-fade>
                 <b data-n={s.n}>{s.n}</b>
                 <span>{s.l}</span>
               </div>
@@ -900,6 +967,13 @@ export default function App() {
 
         {/* 08 · contato */}
         <section className="cta" id="contato" aria-labelledby="cta-title">
+          <div className="goo" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <i />
+            <i className="goo__me" />
+          </div>
           <Label>Vamos conversar</Label>
           <h2 className="cta__title" id="cta-title">
             <Words text="Vamos construir" />
@@ -962,6 +1036,17 @@ export default function App() {
       </main>
 
       <ProjectPanel index={panel} onClose={() => setPanel(null)} />
+      <svg className="fx" aria-hidden="true">
+        <filter id="goo">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="16" result="b" />
+          <feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9" />
+        </filter>
+        <filter id="ripple" x="-5%" y="-20%" width="110%" height="140%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.004 0.018" numOctaves="1" seed="3" result="t" />
+          <feGaussianBlur in="t" stdDeviation="5" result="n" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="0" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </svg>
       <div className="curtain" aria-hidden="true" style={{ visibility: 'hidden' }}>
         <svg viewBox="0 0 100 100" preserveAspectRatio="none">
           <defs>
