@@ -143,3 +143,35 @@ export const stack: { name: string; group: 'Linguagem' | 'Front' | 'Back' | 'Dad
   { name: 'PostgreSQL', group: 'Dados', used: ['01', '02'] },
   { name: 'Docker', group: 'Infra', used: ['02'] },
 ];
+
+// O que eu faço: serviços que aparecem nos repositórios e nos sistemas entregues.
+export const services: { name: string; note: string; tags: string[] }[] = [
+  { name: 'Sistemas internos e ERPs', note: 'Painéis que juntam estoque, pedidos, financeiro e usuários num lugar só.', tags: ['React', 'TypeScript', 'Supabase'] },
+  { name: 'APIs REST', note: 'Autenticação, validação, paginação e testes, com contrato claro para quem consome.', tags: ['Node.js', 'Express', 'FastAPI'] },
+  { name: 'Integrações', note: 'Conecto ferramentas que a empresa já usa, sem obrigar ninguém a trocar de sistema.', tags: ['Tray', 'Tiny', 'Webhooks'] },
+  { name: 'Dashboards e relatórios', note: 'Indicadores, gráficos e exportação em PDF, XLSX e CSV.', tags: ['Chart.js', 'jsPDF', 'SQL'] },
+  { name: 'Controle de acesso', note: 'Papéis e permissões por perfil, com auditoria de quem fez o quê.', tags: ['RBAC', 'Zod', 'Logs'] },
+  { name: 'Visão computacional', note: 'Reconhecimento facial em produção, rodando num serviço separado.', tags: ['Python', 'InsightFace', 'ONNX'] },
+  { name: 'Banco de dados', note: 'Modelagem, políticas de acesso e consultas que aguentam o volume do dia a dia.', tags: ['PostgreSQL', 'Supabase'] },
+  { name: 'Deploy e infraestrutura', note: 'Containers, variáveis de ambiente e publicação contínua.', tags: ['Docker', 'Vercel'] },
+];
+
+// Perguntas frequentes, respondidas com o que está nos projetos.
+export const faq: { q: string; a: string }[] = [
+  { q: 'Quem é o SilvaDev?', a: 'Sou eu, Paulo Silva, desenvolvedor full stack. Cuido do projeto da conversa inicial até o deploy, sem intermediário.' },
+  { q: 'O que você constrói?', a: 'Sistemas web para operações reais: ERPs internos, controle de ponto, financeiro, APIs e integrações entre ferramentas.' },
+  { q: 'Com que tipo de empresa você trabalha?', a: 'Empresas que dependem de planilhas ou de sistemas soltos e querem tudo num painel só, com acesso por perfil.' },
+  { q: 'Qual é a sua stack?', a: 'TypeScript, React e Vite no front. Node, Express e FastAPI no back. PostgreSQL e Supabase nos dados. Docker para rodar em qualquer lugar.' },
+  { q: 'Quanto custa um projeto?', a: 'Depende do escopo. Primeiro entendo o problema e o que já existe, depois mando uma proposta com etapas e prazos.' },
+  { q: 'Como começa?', a: 'Com uma conversa sobre o processo que dói hoje. Não precisa chegar com tudo definido.' },
+];
+
+/** Itens do menu (ordem do site). */
+export const MENU = [
+  { id: 'top', label: 'Início' },
+  { id: 'abordagem', label: 'Abordagem' },
+  { id: 'trabalhos', label: 'Projetos' },
+  { id: 'servicos', label: 'Serviços' },
+  { id: 'faq', label: 'Perguntas' },
+  { id: 'contato', label: 'Contato' },
+];

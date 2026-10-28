@@ -1,4 +1,12 @@
-import { LOGO, TONES } from '../experience/logoShape';
+// Marca SilvaDev (viewBox 64×64). As cores vêm do tema (--logo-*).
+const LOGO = {
+  strokes: [
+    { d: 'M33 18H19a7 7 0 0 0 0 14h8a7 7 0 0 1 0 14H11', w: 8, tone: 'white' },
+    { d: 'M36 12h1a20 20 0 0 1 0 40h-1', w: 8, tone: 'purple' },
+  ],
+  dots: [{ cx: 27, cy: 7.5, r: 3.4 }],
+};
+const TONES: Record<string, string> = { white: '#EEF0F6', purple: '#A596F2', cyan: '#8FD3DF' };
 
 /** Marca SilvaDev, desenhada a partir da mesma definição usada no 3D. */
 export function LogoMark({ mono = false, className, title }: { mono?: boolean; className?: string; title?: string }) {
@@ -6,10 +14,10 @@ export function LogoMark({ mono = false, className, title }: { mono?: boolean; c
     <svg viewBox="0 0 64 64" className={className} role={title ? 'img' : undefined} aria-hidden={title ? undefined : true} fill="none" strokeLinecap="round" strokeLinejoin="round">
       {title && <title>{title}</title>}
       {LOGO.strokes.map((s, i) => (
-        <path key={i} d={s.d} stroke={mono ? 'currentColor' : TONES[s.tone]} strokeWidth={s.w} pathLength={1} />
+        <path key={i} d={s.d} stroke={mono ? 'currentColor' : `var(--logo-${s.tone}, ${TONES[s.tone]})`} strokeWidth={s.w} pathLength={1} />
       ))}
       {LOGO.dots.map((d, i) => (
-        <circle key={i} cx={d.cx} cy={d.cy} r={d.r} fill={mono ? 'currentColor' : TONES.cyan} />
+        <circle key={i} cx={d.cx} cy={d.cy} r={d.r} fill={mono ? 'currentColor' : `var(--logo-cyan, ${TONES.cyan})`} />
       ))}
     </svg>
   );
