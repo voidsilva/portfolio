@@ -2,7 +2,7 @@
 <body><canvas id="c"></canvas><script type="module">
 import { World } from '/src/world/World.ts';
 const q=new URLSearchParams(location.search);
-await document.fonts.load('italic 500 100px Newsreader');await document.fonts.load('500 100px Newsreader');
+await Promise.all(['italic 300 100px Newsreader','400 100px Newsreader','400 20px Geist','600 20px Geist','400 20px "Geist Mono"'].map(f=>document.fonts.load(f)));
 const w=new World(document.getElementById('c'),q.get('tier')||'high',{still:q.has('still')});
 await w.init();if(q.has('water'))w.waterAmp=+q.get('water');w.setProgress(+(q.get('p')||0));
 if(q.has('px'))w.setPointer(+q.get('px'),+q.get('py'));

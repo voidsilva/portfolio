@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Caustics, Poisson, LightAtlas, LIGHT_MARGIN, ATLAS_TILES, type Glass, type LightSpec, MAX_GLASS } from './caustics';
-import { chart, word, ui, shot, blurred } from './content';
+import { contactScreen, loadImage, paperAtlas, processBoard, screenFrom, servicesBoard } from './paper';
 
 /*
-  A câmara de luz: um espelho d'água raso num salão branco, com colunas finas
-  dos lados. A luz entra pelo teto, a água espalha (o caos) e as peças de vidro
-  juntam a luz em imagens (o sistema). A câmera anda pelo salão com a rolagem.
+  O estúdio: uma sala clara, modelada só com código.
+  A câmera anda por ela conforme a rolagem e para em cada bloco do site:
+  porta → mesa com a papelada → três monitores (os três sistemas) → quadro de serviços
+  → parede do processo → notebook do contato.
 */
 
 export type Tier = 'high' | 'mid' | 'low';
@@ -15,186 +15,102 @@ export type Tier = 'high' | 'mid' | 'low';
 interface Station {
   cam: THREE.Vector3;
   look: THREE.Vector3;
-  /** desenho da lente do cursor nesta parada */
-  lens: number;
-  /** onde a lente descansa quando não há ponteiro (relativo ao alvo) */
-  rest: [number, number];
-  focus?: number;
+  /** desloca o enquadramento: o objeto vai para o lado oposto ao texto */
+  shift: [number, number];
 }
 
-/** Peça de vidro fixa: malha + pegada de luz. */
-interface Piece {
-  mesh: THREE.Object3D;
-  glass: Glass;
-  base: number; // amplitude cheia
-}
+const C = {
+  wall: 0xf1f2f6,
+  white: 0xfbfbfd,
+  ink: 0x15171d,
+  purple: 0x8b5cf6,
+  oak: 0xd9c7ad,
+};
 
-// ladrilhos do atlas
-const T = { chart: 0, name: 1, belaways: 2, ponto: 3, gastos: 4, ui: 5, ola: 6, p1: 7, p2: 8, p3: 9, p4: 10, brand: 11 };
+const tex = (c: HTMLCanvasElement, r: THREE.WebGLRenderer) => {
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = Math.min(8, r.capabilities.getMaxAnisotropy());
+  return t;
+};
 
-const BG = new THREE.Color('#F4F5FA');
-
-const FLOOR_VS = /* glsl */ `
-varying vec3 vW;
-void main(){vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}
-`;
-const FLOOR_FS = /* glsl */ `
-precision highp float;
-varying vec3 vW;
-uniform sampler2D uLight;uniform sampler2D uImg;uniform sampler2D uShots;uniform vec2 uCenter;uniform float uSize;uniform float uRes;
-uniform vec3 uCam;uniform vec3 uFog;uniform vec2 uFogR;uniform vec3 uSun;
-uniform vec4 uG0[${MAX_GLASS}];uniform vec4 uG1[${MAX_GLASS}];uniform vec4 uG2[${MAX_GLASS}];
-float colShadow(vec2 p){
-  // colunas em x=±12 a cada 9 unidades; sombra projetada pelo sol
-  float s=0.;
-  for(int k=0;k<2;k++){
-    float cx=k==0?-12.:12.;
-    vec2 q=vec2(p.x-cx,mod(p.y-10.+4.5,9.)-4.5);
-    // segmento da sombra: da base até a base + direção do sol * altura
-    vec2 dir=normalize(uSun.xz)*12.;
-    vec2 pa=q, ba=dir;float h=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);
-    float d=length(pa-ba*h);
-    s=max(s,(1.-smoothstep(.25,.9+h*1.6,d))*(1.-h*.7));
-  }
-  return s;
-}
-float glassShadow(vec2 p){
-  // sombra suave e deslocada de cada vidro (o vidro também bloqueia um pouco)
-  float s=0.;
-  for(int i=0;i<${MAX_GLASS};i++){
-    vec4 a=uG0[i],b=uG1[i],c=uG2[i];if(c.z<.001)continue;
-    vec2 d=p-a.xy-normalize(uSun.xz)*1.1;float cs=cos(b.x),sn=sin(b.x);
-    vec2 l=vec2(cs*d.x+sn*d.y,-sn*d.x+cs*d.y)/a.zw;
-    float e=b.y>.5?1.-length(l):min(1.-abs(l.x),1.-abs(l.y));
-    s=max(s,smoothstep(-.35,.25,e)*c.z*.5);
-  }
-  return s;
-}
-void main(){
-  vec2 p=vW.xz;
-  vec2 wuv=(p-uCenter)/uSize+.5;
-  float inW=smoothstep(0.,.3,wuv.x)*smoothstep(1.,.7,wuv.x)*smoothstep(0.,.35,wuv.y)*smoothstep(1.,.8,wuv.y);
-  vec2 tx=vec2(1.4/uRes);
-  vec3 I=(texture2D(uLight,wuv).rgb*2.+texture2D(uLight,wuv+vec2(tx.x,0.)).rgb+texture2D(uLight,wuv-vec2(tx.x,0.)).rgb+texture2D(uLight,wuv+vec2(0.,tx.y)).rgb+texture2D(uLight,wuv-vec2(0.,tx.y)).rgb)/6.;
-  I=mix(vec3(1.),I,inW);
-  // a imagem pré-calculada de cada vidro
-  for(int i=0;i<${MAX_GLASS};i++){
-    vec4 a=uG0[i],b=uG1[i],cc=uG2[i];if(cc.z<.001||cc.x<0.)continue;
-    vec2 d=p-a.xy;float cs=cos(b.x),sn=sin(b.x);
-    vec2 l=vec2(cs*d.x+sn*d.y,-sn*d.x+cs*d.y)/a.zw;
-    float M=${LIGHT_MARGIN.toFixed(2)};
-    float e=b.y>.5?length(l):max(abs(l.x),abs(l.y));
-    if(e>M)continue;
-    vec2 uv=vec2(l.x,-l.y)/(2.*M)+.5;
-    vec2 t=vec2(mod(cc.x,${ATLAS_TILES}.),floor(cc.x/${ATLAS_TILES}.));
-    vec3 J=texture2D(uImg,(t+uv)/${ATLAS_TILES}.).rgb;
-    float w=cc.z*(1.-smoothstep(M-.25,M-.02,e));
-    // placas de projeto: a luz atravessa a tela impressa no vidro (como um slide)
-    if(b.w>=0.){
-      vec2 su=clamp(vec2(l.x,-l.y)*.5+.5,0.,1.);
-      vec3 sc=texture2D(uShots,vec2((b.w+su.x)/3.,su.y)).rgb;
-      float inS=step(abs(l.x),1.)*step(abs(l.y),1.);
-      J*=mix(vec3(1.),.35+sc*1.05,inS*.85);
+function planks() {
+  // assoalho claro: tábuas com veio suave
+  const c = document.createElement('canvas');
+  c.width = c.height = 1024;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#DCCFBE';
+  x.fillRect(0, 0, 1024, 1024);
+  const rows = 8;
+  for (let i = 0; i < rows; i++) {
+    const y = (i * 1024) / rows;
+    let xx = -((i * 397) % 600);
+    while (xx < 1024) {
+      const w = 500 + ((i * 131 + Math.abs(xx)) % 300);
+      const l = 80 + ((i * 7 + Math.floor(Math.abs(xx))) % 7) - 3;
+      x.fillStyle = `hsl(32 30% ${l}%)`;
+      x.fillRect(xx, y, w, 1024 / rows);
+      for (let k = 0; k < 14; k++) {
+        x.strokeStyle = `rgba(150,120,90,${0.035 + (k % 3) * 0.012})`;
+        x.lineWidth = 1 + (k % 2);
+        x.beginPath();
+        const yy = y + 8 + k * 8.5;
+        x.moveTo(xx, yy);
+        x.bezierCurveTo(xx + w * 0.3, yy + 4, xx + w * 0.6, yy - 4, xx + w, yy + 1);
+        x.stroke();
+      }
+      x.fillStyle = 'rgba(110,90,70,.22)';
+      x.fillRect(xx, y, 2, 1024 / rows);
+      xx += w;
     }
-    I=mix(I,J,w);
+    x.fillStyle = 'rgba(110,90,70,.25)';
+    x.fillRect(0, y, 1024, 2);
   }
-  float L=I.g;
-  vec3 shade=vec3(.80,.81,.875),base=vec3(.905,.912,.945),white=vec3(1.);
-  vec3 c=mix(shade,base,smoothstep(.2,1.,L));
-  c=mix(c,white,smoothstep(1.,1.9,L));
-  // luz muito concentrada ganha um brilho levemente lilás
-  c+=vec3(.02,0.,.05)*smoothstep(1.8,3.5,L);
-  // dispersão: franjas roxas e ciano
-  c=mix(c,vec3(.80,.73,1.),clamp((I.r-I.g)*.45,0.,.55));
-  c=mix(c,vec3(.72,.93,1.),clamp((I.b-I.g)*.45,0.,.55));
-  // piso de pedra clara em placas grandes
-  vec2 g=abs(fract(p/3.)-.5)*3.;float w=fwidth(p.x)*1.2;
-  float line=1.-smoothstep(0.,w,min(1.5-g.x,1.5-g.y));
-  c*=1.-line*.035;
-  c*=1.-colShadow(p)*.09;
-  c*=1.-glassShadow(p)*.06;
-  float dist=length(vW-uCam);
-  c=mix(c,uFog,smoothstep(uFogR.x,uFogR.y,dist));
-  gl_FragColor=vec4(pow(c,vec3(2.2)),1.);
+  return c;
 }
-`;
 
-const POST_FS = /* glsl */ `
-precision highp float;
-varying vec2 vUv;
-uniform sampler2D tColor;uniform sampler2D tDepth;
-uniform vec2 uRes;uniform float uFocus;uniform float uAperture;uniform float uIntro;uniform float uNear;uniform float uFar;
-float lin(float d){float z=d*2.-1.;return 2.*uNear*uFar/(uFar+uNear-z*(uFar-uNear));}
-void main(){
-  float d=lin(texture2D(tDepth,vUv).x);
-  float coc=clamp(abs(d-uFocus)/d*uAperture,0.,1.);
-  coc=max(coc,uIntro);
-  float rad=coc*14.;
-  vec3 acc=vec3(0.);float wsum=0.;
-  const float GA=2.39996323;
-  for(int i=0;i<24;i++){
-    float fi=float(i);float r=sqrt((fi+.5)/24.)*rad;float th=fi*GA;
-    vec2 o=vec2(cos(th),sin(th))*r/uRes;
-    vec3 s=texture2D(tColor,vUv+o).rgb;
-    float w=1.;acc+=s*w;wsum+=w;
-  }
-  vec3 c=rad<.5?texture2D(tColor,vUv).rgb:acc/wsum;
-  c=pow(c,vec3(1./2.2));
-  // vinheta clara, quase imperceptível
-  vec2 q=vUv-.5;c=mix(c,c*.985,dot(q,q)*1.2);
-  gl_FragColor=vec4(c,1.);
-}
-`;
-
-function lensGeometry(R: number, t: number) {
-  const pts: THREE.Vector2[] = [];
-  const N = 28,
-    e = 0.04;
-  for (let i = 0; i <= N; i++) {
-    const r = (i / N) * R;
-    pts.push(new THREE.Vector2(r, -(e + (t / 2) * (1 - (r / R) ** 2))));
-  }
-  for (let i = N; i >= 0; i--) {
-    const r = (i / N) * R;
-    pts.push(new THREE.Vector2(r, e + (t / 2) * (1 - (r / R) ** 2)));
-  }
-  const g = new THREE.LatheGeometry(pts, 96);
-  g.computeVertexNormals();
-  return g;
+function keys() {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 320;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#E4E6EC';
+  x.fillRect(0, 0, 1024, 320);
+  const w = 1000 / 14.6;
+  [14, 14, 13, 12].forEach((n, r) => {
+    for (let i = 0; i < n; i++) {
+      x.fillStyle = '#FFFFFF';
+      x.beginPath();
+      x.roundRect(12 + i * w + (14 - n) * w * 0.5 + 3, 12 + r * 60 + 3, w - 6, 54, 8);
+      x.fill();
+    }
+  });
+  x.beginPath();
+  x.roundRect(12 + w * 4 + 3, 12 + 4 * 60 + 3, w * 6 - 6, 54, 8);
+  x.fill();
+  return c;
 }
 
 export class World {
   readonly renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera;
-  private caustics!: Caustics;
-  private lights!: LightAtlas;
-  private floorMat!: THREE.ShaderMaterial;
-  private glassMat!: THREE.Material;
-  private pieces: Piece[] = [];
-  private lens!: THREE.Mesh;
-  private lensSlots: Glass[] = [];
-  private lensTile = -1;
   private stations: Station[] = [];
   private camCurve!: THREE.CatmullRomCurve3;
   private lookCurve!: THREE.CatmullRomCurve3;
+  private shiftCurve!: THREE.CatmullRomCurve3;
   private progress = 0;
   private shown = 0;
-  private pointer = new THREE.Vector2(0, 0);
+  private pointer = new THREE.Vector2();
+  private smoothPtr = new THREE.Vector2();
   private hasPointer = false;
-  private lensPos = new THREE.Vector3(0, 0, 0);
-  private lensVel = new THREE.Vector3();
-  private ray = new THREE.Raycaster();
-  private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private clock = new THREE.Clock();
-  private time = 0;
   private running = false;
-  private rt?: THREE.WebGLRenderTarget;
-  private post?: { scene: THREE.Scene; mat: THREE.ShaderMaterial };
-  private intro = 1;
+  private intro = 0;
   private still: boolean;
   private frames: number[] = [];
-  waterAmp = 0.065;
+  private papers: { mesh: THREE.Mesh; mess: THREE.Matrix4; neat: THREE.Matrix4; delay: number }[] = [];
+  private sun!: THREE.DirectionalLight;
   onTier?: (t: Tier) => void;
 
   constructor(
@@ -203,335 +119,466 @@ export class World {
     opts: { still: boolean },
   ) {
     this.still = opts.still;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'low', powerPreference: 'high-performance', alpha: false });
-    this.renderer.setClearColor(BG);
-    this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace; // a conversão final é feita no pós
-    this.camera = new THREE.PerspectiveCamera(36, 1, 0.5, 220);
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.shadowMap.enabled = tier !== 'low';
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.camera = new THREE.PerspectiveCamera(36, 1, 0.05, 40);
   }
 
   private get mobile() {
     return innerWidth < 820;
   }
+  get stationCount() {
+    return this.stations.length;
+  }
 
   async init() {
     const r = this.renderer;
-    const high = this.tier === 'high';
+    const s = this.scene;
     this.setSize();
-
-    // 1. relevos: cada desenho vira uma lente que forma aquela imagem
-    const poisson = new Poisson(r);
-    const base = chart();
-    const jobs: [number, HTMLCanvasElement | Promise<HTMLCanvasElement>][] = [
-      [T.chart, base],
-      [T.name, word('Paulo', 104)],
-      [T.ola, word('olá', 132)],
-      [T.brand, word('SilvaDev', 80, false)],
-      [T.ui, ui()],
-      [T.p1, blurred(base, 9)],
-      [T.p2, blurred(base, 5)],
-      [T.p3, blurred(base, 2.4)],
-      [T.p4, base],
-      [T.belaways, shot('/belaways.webp')],
-      [T.ponto, shot('/pontofacial.webp')],
-      [T.gastos, shot('/gastos.webp')],
-    ];
-    const rect = new Set([T.belaways, T.ponto, T.gastos]);
-    for (const [tile, c] of jobs) {
-      const cv = await c;
-      poisson.solve(cv, tile, high ? 256 : 128, !rect.has(tile));
-      await new Promise((res) => setTimeout(res, 0)); // devolve o controle entre ladrilhos
-    }
-
-    // 2. a luz que cada vidro forma, calculada uma vez
-    this.lights = new LightAtlas(r, poisson.atlas.texture, high ? 512 : 256, high ? 512 : this.tier === 'mid' ? 384 : 256, this.tier !== 'low');
-    const L = (spec: Partial<LightSpec> & { tile: number }) => this.lights.bake({ round: 1, contrast: 1.25, bevel: 0.0007, ramp: 0, ...spec });
-    const lit = {
-      chart: L({ tile: T.chart }),
-      name: L({ tile: T.name, contrast: 1 }),
-      ui: L({ tile: T.ui }),
-      brand: L({ tile: T.brand, contrast: 1 }),
-      belaways: L({ tile: T.belaways, round: 0, contrast: 2, bevel: 0.001 }),
-      ponto: L({ tile: T.ponto, round: 0, contrast: 2, bevel: 0.001 }),
-      gastos: L({ tile: T.gastos, round: 0, contrast: 2, bevel: 0.001 }),
-      p1: L({ tile: T.p1 }),
-      p2: L({ tile: T.p2 }),
-      p3: L({ tile: T.p3 }),
-      p4: L({ tile: T.p4 }),
-      ola: L({ tile: T.ola, contrast: 1 }),
-      prismA: L({ tile: -1, round: 0, bevel: 0.002, ramp: 0.35 }),
-      prismB: L({ tile: -1, round: 0, bevel: 0.002, ramp: 0.55 }),
-    };
-
-    this.caustics = new Caustics(poisson.atlas.texture, {
-      heightRes: high ? 512 : 256,
-      causticRes: high ? 1024 : this.tier === 'mid' ? 768 : 512,
-      grid: high ? 400 : this.tier === 'mid' ? 260 : 170,
-      dispersion: this.tier !== 'low',
-    });
-    this.caustics.size = this.mobile ? 22 : 38;
-
-    // 2. ambiente: luz de estúdio para os reflexos do vidro
+    s.background = new THREE.Color(C.wall);
     const pm = new THREE.PMREMGenerator(r);
-    this.scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+    s.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+    s.environmentIntensity = 0.55;
     pm.dispose();
-    this.scene.background = BG.clone().convertSRGBToLinear();
-    this.scene.fog = new THREE.Fog(BG.clone().convertSRGBToLinear(), 34, 90);
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xdfe2ee, 1.15);
-    this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffffff, 0.9);
-    sun.position.set(-5, 14, 4);
-    this.scene.add(sun);
-    const sunDir = sun.position.clone().normalize().negate();
+    const std = (color: number, rough = 0.9, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+    const add = <T extends THREE.Object3D>(o: T, cast = true, recv = true) => {
+      o.traverse((m) => {
+        if ((m as THREE.Mesh).isMesh) {
+          m.castShadow = cast;
+          m.receiveShadow = recv;
+        }
+      });
+      s.add(o);
+      return o;
+    };
+    const box = (w: number, h: number, d: number, mat: THREE.Material, rad = 0.004, seg = 2) =>
+      new THREE.Mesh(new RoundedBoxGeometry(w, h, d, seg, Math.min(rad, w / 2.01, h / 2.01, d / 2.01)), mat);
 
-    // telas dos projetos lado a lado (para a projeção no chão e o slide no vidro)
-    const shotImgs = await Promise.all(['/belaways.webp', '/pontofacial.webp', '/gastos.webp'].map(async (src) => {
-      const im = new Image();
-      im.src = src;
-      await im.decode();
-      return im;
-    }));
-    const sc = document.createElement('canvas');
-    sc.width = 1536;
-    sc.height = 512;
-    const sx = sc.getContext('2d')!;
-    shotImgs.forEach((im, i) => {
-      const w = 512 - 24,
-        h = (w * im.height) / im.width;
-      sx.fillStyle = '#000';
-      sx.drawImage(im, i * 512 + 12, (512 - h) / 2, w, h);
-    });
-    const shots = new THREE.CanvasTexture(sc);
-    shots.colorSpace = THREE.NoColorSpace;
-    shots.anisotropy = 8;
-
-    // 3. chão de pedra clara que recebe a luz
-    const c = this.caustics;
-    this.floorMat = new THREE.ShaderMaterial({
-      vertexShader: FLOOR_VS,
-      fragmentShader: FLOOR_FS,
-      uniforms: {
-        uLight: { value: c.light.texture },
-        uImg: { value: this.lights.rt.texture },
-        uShots: { value: shots },
-        uCenter: { value: c.center },
-        uSize: { value: c.size },
-        uRes: { value: c.light.width },
-        uCam: { value: this.camera.position },
-        uFog: { value: new THREE.Vector3(BG.r, BG.g, BG.b) },
-        uFogR: { value: new THREE.Vector2(30, 80) },
-        uSun: { value: sunDir },
-        uG0: { value: Array.from({ length: MAX_GLASS }, () => new THREE.Vector4(0, 0, 1, 1)) },
-        uG1: { value: Array.from({ length: MAX_GLASS }, () => new THREE.Vector4()) },
-        uG2: { value: Array.from({ length: MAX_GLASS }, () => new THREE.Vector4(-1, 0, 0, 0)) },
-      },
-    });
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(64, 200), this.floorMat);
+    /* ---------- sala ---------- */
+    const W = 8,
+      D = 7.5,
+      H = 3.1,
+      back = -3,
+      front = back + D;
+    const floorT = tex(planks(), r);
+    floorT.wrapS = floorT.wrapT = THREE.RepeatWrapping;
+    floorT.repeat.set(3, 3);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: floorT, roughness: 0.62 }));
     floor.rotation.x = -Math.PI / 2;
-    floor.position.z = -60;
-    this.scene.add(floor);
-
-    // 4. arquitetura: borda do espelho d'água e colunas finas
-    const stone = new THREE.MeshStandardMaterial({ color: 0xe9ebf2, roughness: 0.9, envMapIntensity: 0.25 });
-    const edge = new THREE.BoxGeometry(0.7, 0.28, 200);
-    for (const x of [-10.6, 10.6]) {
-      const e = new THREE.Mesh(edge, stone);
-      e.position.set(x, 0.14, -60);
-      this.scene.add(e);
+    floor.position.set(0, 0, back + D / 2);
+    add(floor, false);
+    const wallM = std(C.wall, 0.96);
+    const wall = (w: number, h: number, x: number, y: number, z: number, ry: number) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), wallM);
+      m.position.set(x, y, z);
+      m.rotation.y = ry;
+      return add(m, false);
+    };
+    wall(W, H, 0, H / 2, back, 0); // fundo
+    wall(D, H, W / 2, H / 2, back + D / 2, -Math.PI / 2); // direita
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), std(0xf7f7fa, 1));
+    ceil.rotation.x = Math.PI / 2;
+    ceil.position.set(0, H, back + D / 2);
+    add(ceil, false);
+    // esquerda com janela grande
+    const winZ0 = -2.2,
+      winZ1 = 1.6,
+      winY0 = 0.85,
+      winY1 = 2.65;
+    wall(winZ0 - back, H, -W / 2, H / 2, (back + winZ0) / 2, Math.PI / 2);
+    wall(front - winZ1, H, -W / 2, H / 2, (winZ1 + front) / 2, Math.PI / 2);
+    wall(winZ1 - winZ0, winY0, -W / 2, winY0 / 2, (winZ0 + winZ1) / 2, Math.PI / 2);
+    wall(winZ1 - winZ0, H - winY1, -W / 2, (H + winY1) / 2, (winZ0 + winZ1) / 2, Math.PI / 2);
+    // céu claro atrás da janela
+    const sky = new THREE.Mesh(new THREE.PlaneGeometry(14, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
+    sky.position.set(-W / 2 - 3, 2, 0);
+    sky.rotation.y = Math.PI / 2;
+    s.add(sky);
+    // caixilho e persianas: as listras de sombra no chão vêm daqui
+    const frameM = std(C.white, 0.5);
+    add(box(0.06, winY1 - winY0, 0.05, frameM, 0.01), true, false).position.set(-W / 2 + 0.02, (winY0 + winY1) / 2, (winZ0 + winZ1) / 2);
+    const nSlat = 9;
+    const slats = new THREE.InstancedMesh(new THREE.BoxGeometry(0.07, 0.01, winZ1 - winZ0), std(0xffffff, 0.6), nSlat);
+    const mm = new THREE.Matrix4();
+    for (let i = 0; i < nSlat; i++) {
+      mm.makeRotationZ(0.55).setPosition(-W / 2 + 0.09, winY1 - 0.06 - i * 0.075, (winZ0 + winZ1) / 2);
+      slats.setMatrixAt(i, mm);
     }
-    const colGeo = new THREE.CylinderGeometry(0.34, 0.34, 16, 24);
-    const cols = new THREE.InstancedMesh(colGeo, stone, 46);
-    const m = new THREE.Matrix4();
-    let n = 0;
-    for (let i = 0; i < 23; i++)
-      for (const x of [-12, 12]) {
-        m.makeTranslation(x, 8, 10 - i * 9);
-        cols.setMatrixAt(n++, m);
-      }
-    this.scene.add(cols);
+    add(slats, true, false);
+    // rodapé
+    const skirt = std(C.white, 0.6);
+    add(box(W, 0.08, 0.015, skirt), false).position.set(0, 0.04, back + 0.008);
+    add(box(0.015, 0.08, D, skirt), false).position.set(W / 2 - 0.008, 0.04, back + D / 2);
 
-    // 5. vidro
-    this.glassMat =
-      this.tier === 'low'
-        ? new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.28, envMapIntensity: 1.4, clearcoat: 1 })
-        : new THREE.MeshPhysicalMaterial({
-            color: 0xffffff,
-            roughness: 0.035,
-            metalness: 0,
-            transmission: 1,
-            thickness: 0.7,
-            ior: 1.5,
-            dispersion: high ? 4 : 0,
-            attenuationColor: new THREE.Color('#E9E2FF'),
-            attenuationDistance: 5,
-            specularIntensity: 1,
-            envMapIntensity: 1.3,
-          });
-
-    // lente do cursor
-    const LR = this.mobile ? 2 : 2.5;
-    this.lens = new THREE.Mesh(lensGeometry(LR, 0.75), this.glassMat);
-    this.scene.add(this.lens);
-    const lensGlass = (tile: number, on: number): Glass => ({ x: 0, z: 0, hx: LR, hz: LR, rot: 0, round: 1, amp: 0, bevel: 0.006, tile, calm: 1, on });
-    this.lensSlots = [lensGlass(lit.chart, 1), lensGlass(lit.name, 0)];
-    this.lensTile = lit.chart;
-
-    const add = (mesh: THREE.Object3D, g: Omit<Glass, 'on'>, contrast: number) => {
-      const glass: Glass = { ...g, on: 0 };
-      void contrast;
-      this.pieces.push({ mesh, glass, base: glass.amp });
-      this.scene.add(mesh);
+    // sombra de contato: escurece onde as coisas tocam o chão (barato e convincente)
+    const blobT = (() => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const x = c.getContext('2d')!;
+      const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0, 'rgba(0,0,0,1)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = g;
+      x.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(c);
+    })();
+    const blob = (x: number, y: number, z: number, w: number, d: number, o: number) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: blobT, color: 0x2a2018, transparent: true, opacity: o, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(x, y, z);
+      m.renderOrder = 1;
+      s.add(m);
     };
 
-    // projetos: placas de vidro que projetam a tela do sistema em luz
-    const slab = (x: number, z: number, rot: number, tile: number, shot: number) => {
-      const w = 6.4,
-        d = 6.4;
+    /* ---------- luz ---------- */
+    s.add(new THREE.HemisphereLight(0xffffff, 0xd8d2c8, 0.5));
+    const sun = new THREE.DirectionalLight(0xfff4e6, 3.4);
+    sun.position.set(-9, 6.2, 1.2);
+    sun.target.position.set(0, 0, -1);
+    sun.castShadow = this.tier !== 'low';
+    const sz = this.tier === 'high' ? 4096 : 2048;
+    sun.shadow.mapSize.set(sz, sz);
+    Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 4, bottom: -4, near: 2, far: 20 });
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.02;
+    sun.shadow.radius = 3;
+    s.add(sun, sun.target);
+    this.sun = sun;
+    // luz quente de preenchimento vinda da sala
+    const fill = new THREE.PointLight(0xfff1e0, 2.4, 9, 1.6);
+    fill.position.set(1.5, 2.6, 1.5);
+    s.add(fill);
+
+    /* ---------- mesa ---------- */
+    const deskY = 0.74,
+      deskZ = -2.05,
+      deskW = 2.7,
+      deskD = 0.82;
+    add(box(deskW, 0.035, deskD, std(C.white, 0.45), 0.012, 3)).position.set(0, deskY, deskZ);
+    const legM = std(C.ink, 0.45, 0.6);
+    for (const sx of [-1, 1]) {
+      const fr = new THREE.Group();
+      const a = box(0.035, deskY - 0.02, 0.035, legM, 0.006);
+      a.position.set(0, (deskY - 0.02) / 2, deskD / 2 - 0.08);
+      const b = a.clone();
+      b.position.z = -deskD / 2 + 0.08;
+      const c = box(0.035, 0.035, deskD - 0.12, legM, 0.006);
+      c.position.set(0, 0.02, 0);
+      const d = c.clone();
+      d.position.y = deskY - 0.04;
+      fr.add(a, b, c, d);
+      fr.position.set(sx * (deskW / 2 - 0.12), 0, deskZ);
+      add(fr);
+    }
+
+    blob(0, 0.002, deskZ, deskW + 0.5, deskD + 0.6, 0.22);
+    for (const sx of [-1, 1]) blob(sx * (deskW / 2 - 0.12), 0.003, deskZ, 0.22, deskD + 0.15, 0.3);
+
+    /* ---------- monitores: um sistema em cada ---------- */
+    const shots = await Promise.all(['/belaways.webp', '/pontofacial.webp', '/gastos.webp'].map(loadImage));
+    const bezel = std(C.ink, 0.35, 0.3);
+    const silver = std(0xc9ccd4, 0.35, 0.8);
+    const monW = 0.62,
+      monH = 0.36;
+    const mons: [number, number][] = [
+      [-0.69, 0.32],
+      [0, 0],
+      [0.69, -0.32],
+    ];
+    const monY = deskY + 0.0175 + 0.16 + monH / 2;
+    const monZ = (ry: number) => deskZ - 0.12 + Math.abs(ry) * 0.25;
+    mons.forEach(([mx, ry], i) => {
       const g = new THREE.Group();
-      const glass = new THREE.Mesh(new RoundedBoxGeometry(w, 0.22, d, 4, 0.09), this.glassMat);
-      g.add(glass);
-      // a tela impressa no vidro, como um slide
-      const tex = shots.clone();
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.repeat.set(1 / 3, 1);
-      tex.offset.set(shot / 3, 0);
-      tex.needsUpdate = true;
-      const film = new THREE.Mesh(
-        new THREE.PlaneGeometry(w * 0.96, d * 0.96),
-        new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.82, depthWrite: false }),
-      );
-      film.rotation.x = -Math.PI / 2;
-      film.position.y = 0.113;
-      g.add(film);
-      g.position.set(x, 1.45, z);
-      g.rotation.y = rot;
-      add(g, { x, z, hx: w / 2, hz: d / 2, rot: -rot, round: 0, amp: 0, bevel: 0.01, tile, calm: 1, shot }, 1.8);
+      const body = box(monW + 0.024, monH + 0.024, 0.022, bezel, 0.008, 3);
+      const scr = new THREE.Mesh(new THREE.PlaneGeometry(monW, monH), new THREE.MeshBasicMaterial({ map: tex(screenFrom(shots[i]), r), toneMapped: false }));
+      scr.position.z = 0.0115;
+      const neck = box(0.04, 0.2, 0.03, silver, 0.01);
+      neck.position.set(0, -monH / 2 - 0.06, -0.03);
+      const foot = box(0.22, 0.012, 0.16, silver, 0.005);
+      foot.position.set(0, -monH / 2 - 0.16 + 0.006 - 0.0175 + 0.0175, -0.03);
+      g.add(body, scr, neck, foot);
+      g.position.set(mx, monY, monZ(ry));
+      g.rotation.y = ry;
+      add(g);
+    });
+
+    // teclado, mouse, caneca
+    const kbg = new THREE.Group();
+    const kbTop = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.13), new THREE.MeshStandardMaterial({ map: tex(keys(), r), roughness: 0.6 }));
+    kbTop.rotation.x = -Math.PI / 2;
+    kbTop.position.y = 0.0095;
+    kbg.add(box(0.44, 0.018, 0.14, std(0xe8eaef, 0.5), 0.006), kbTop);
+    kbg.position.set(-0.05, deskY + 0.027, deskZ + 0.18);
+    kbg.rotation.y = 0.03;
+    add(kbg);
+    const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.03, 24, 16), std(0xf4f5f8, 0.4));
+    mouse.scale.set(0.9, 0.45, 1.5);
+    mouse.position.set(0.3, deskY + 0.03, deskZ + 0.2);
+    add(mouse);
+    const mugPts = [0, 0, 0.038, 0, 0.041, 0.005, 0.041, 0.1, 0.037, 0.1, 0.037, 0.008, 0, 0.008];
+    const mugV = Array.from({ length: mugPts.length / 2 }, (_, i) => new THREE.Vector2(mugPts[i * 2], mugPts[i * 2 + 1]));
+    const mugM = std(C.purple, 0.35);
+    const mugG = new THREE.Group();
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.007, 10, 24, Math.PI), mugM);
+    handle.rotation.z = -Math.PI / 2;
+    handle.position.set(0.041, 0.05, 0);
+    const coffee = new THREE.Mesh(new THREE.CircleGeometry(0.036, 32), std(0x3a2618, 0.2));
+    coffee.rotation.x = -Math.PI / 2;
+    coffee.position.y = 0.085;
+    mugG.add(new THREE.Mesh(new THREE.LatheGeometry(mugV, 40), mugM), handle, coffee);
+    mugG.position.set(-0.98, deskY + 0.0175, deskZ + 0.12);
+    mugG.rotation.y = 2.4;
+    add(mugG);
+
+    // notebook aberto: a tela do contato
+    const lap = new THREE.Group();
+    const alu = std(0xd5d8df, 0.3, 0.85);
+    const lid = new THREE.Group();
+    const lidB = box(0.34, 0.225, 0.008, alu, 0.006);
+    lidB.position.y = 0.1125;
+    const lidS = new THREE.Mesh(new THREE.PlaneGeometry(0.315, 0.197), new THREE.MeshBasicMaterial({ map: tex(contactScreen(), r), toneMapped: false }));
+    lidS.position.set(0, 0.1125, 0.0045);
+    lid.add(lidB, lidS);
+    lid.position.set(0, 0.006, -0.115);
+    lid.rotation.x = -0.32;
+    const lk = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.1), new THREE.MeshStandardMaterial({ map: tex(keys(), r), roughness: 0.6, color: 0xdddfe6 }));
+    lk.rotation.x = -Math.PI / 2;
+    lk.position.set(0, 0.0065, -0.03);
+    lap.add(box(0.34, 0.012, 0.23, alu, 0.006), lid, lk);
+    lap.position.set(1.02, deskY + 0.024, deskZ + 0.2);
+    lap.rotation.y = -0.38;
+    add(lap);
+
+    /* ---------- a papelada: começa espalhada e se arruma ---------- */
+    const atlas = tex(paperAtlas(this.tier === 'low' ? 1024 : 2048), r);
+    const rng = (k: number) => {
+      const v = Math.sin(k * 127.1 + 311.7) * 43758.5453;
+      return v - Math.floor(v);
     };
-    slab(-3.2, -38, 0.12, lit.belaways, 0);
-    slab(3.4, -50, -0.1, lit.ponto, 1);
-    slab(-3.2, -62, 0.08, lit.gastos, 2);
-
-    // serviços: prismas que desviam faixas de luz (cada faixa, um serviço)
-    for (let i = 0; i < 6; i++) {
-      const x = -7.5 + i * 3;
-      const z = -80 + (i % 2) * 1.6;
-      const prism = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 7.4, 3, 1), this.glassMat);
-      prism.rotation.set(Math.PI / 2, 0, Math.PI / 6 + i * 0.07);
-      prism.position.set(x, 1 + (i % 3) * 0.18, z);
-      add(prism, { x, z, hx: 0.54, hz: 3.7, rot: 0, round: 0, amp: 0, bevel: 0.014, tile: i % 2 ? lit.prismB : lit.prismA, calm: 0.7, ramp: 0.22 + i * 0.03 }, 0);
+    const paperM = new THREE.MeshStandardMaterial({ map: atlas, roughness: 0.85, side: THREE.DoubleSide });
+    for (let i = 0; i < 16; i++) {
+      const g = new THREE.PlaneGeometry(0.2, 0.2);
+      const u0 = (i % 4) / 4,
+        v0 = 1 - (Math.floor(i / 4) + 1) / 4;
+      const uv = g.attributes.uv as THREE.BufferAttribute;
+      for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) * 0.25, v0 + uv.getY(k) * 0.25);
+      g.rotateX(-Math.PI / 2);
+      const m = new THREE.Mesh(g, paperM);
+      m.castShadow = m.receiveShadow = true;
+      m.matrixAutoUpdate = false;
+      // bagunça: espalhado pela mesa, alguns no chão
+      const onFloor = i >= 12;
+      const mess = new THREE.Matrix4().compose(
+        onFloor
+          ? new THREE.Vector3(-0.9 + rng(i) * 1.6, 0.002 + i * 0.0004, deskZ + 0.6 + rng(i + 9) * 0.7)
+          : new THREE.Vector3(-1.15 + rng(i) * 2.2, deskY + 0.019 + i * 0.0012, deskZ + 0.02 + rng(i + 5) * 0.34),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rng(i + 1) * Math.PI * 2, 0)),
+        new THREE.Vector3(1, 1, 1),
+      );
+      // arrumado: uma pilha só, no canto esquerdo da mesa
+      const neat = new THREE.Matrix4().compose(
+        new THREE.Vector3(-1.1, deskY + 0.019 + i * 0.0016, deskZ + 0.22),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0.05 + (rng(i + 7) - 0.5) * 0.06, 0)),
+        new THREE.Vector3(1, 1, 1),
+      );
+      m.matrix.copy(mess);
+      s.add(m);
+      this.papers.push({ mesh: m, mess, neat, delay: rng(i + 11) });
     }
 
-    // processo: quatro lentes em fila, cada uma mais nítida
-    [lit.p1, lit.p2, lit.p3, lit.p4].forEach((tile, i) => {
-      const R = 1.75;
-      const x = -6.3 + i * 4.2,
-        z = -98;
-      const l = new THREE.Mesh(lensGeometry(R, 0.55), this.glassMat);
-      l.position.set(x, 1.1 + i * 0.12, z);
-      add(l, { x, z, hx: R, hz: R, rot: 0, round: 1, amp: 0, bevel: 0.005, tile, calm: 1 }, 2);
+    /* ---------- tapete ---------- */
+    const rug = new THREE.Mesh(new RoundedBoxGeometry(3.2, 0.012, 2.1, 2, 0.006), std(0xe4e3e6, 1));
+    rug.position.set(0.1, 0.006, deskZ + 0.85);
+    add(rug, false, true);
+
+    /* ---------- cadeira ---------- */
+    const chair = new THREE.Group();
+    const fab = std(0xe2e3e9, 0.95);
+    const seat = box(0.48, 0.07, 0.46, fab, 0.03, 4);
+    seat.position.y = 0.47;
+    const backR = box(0.46, 0.5, 0.06, fab, 0.03, 4);
+    backR.position.set(0, 0.8, 0.22);
+    backR.rotation.x = -0.12;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.36, 16), legM);
+    post.position.y = 0.26;
+    const spine = box(0.05, 0.36, 0.03, legM, 0.01);
+    spine.position.set(0, 0.6, 0.24);
+    chair.add(seat, backR, post, spine);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const leg = box(0.32, 0.03, 0.04, legM, 0.01);
+      leg.position.set(Math.cos(a) * 0.16, 0.07, Math.sin(a) * 0.16);
+      leg.rotation.y = -a;
+      const wheel = new THREE.Mesh(new THREE.SphereGeometry(0.025, 12, 8), legM);
+      wheel.position.set(Math.cos(a) * 0.3, 0.025, Math.sin(a) * 0.3);
+      chair.add(leg, wheel);
+    }
+    chair.position.set(0.75, 0, deskZ + 1.0);
+    blob(0.75, 0.003, deskZ + 1.0, 0.8, 0.8, 0.35);
+    chair.rotation.y = -0.95;
+    add(chair);
+
+    /* ---------- quadro de serviços (parede direita) ---------- */
+    const wb = new THREE.Group();
+    const wbW = 2.0,
+      wbH = 1.125;
+    const metal = std(0xd8dbe2, 0.4, 0.7);
+    const wbS = new THREE.Mesh(new THREE.PlaneGeometry(wbW, wbH), new THREE.MeshStandardMaterial({ map: tex(servicesBoard(), r), roughness: 0.35, emissive: 0xffffff, emissiveIntensity: 0.25 }));
+    (wbS.material as THREE.MeshStandardMaterial).emissiveMap = (wbS.material as THREE.MeshStandardMaterial).map;
+    wbS.position.z = 0.0135;
+    const tray = box(0.9, 0.025, 0.06, metal, 0.006);
+    tray.position.set(0, -wbH / 2 - 0.04, 0.03);
+    wb.add(box(wbW + 0.05, wbH + 0.05, 0.025, metal, 0.008), wbS, tray);
+    [0x8b5cf6, 0x15171d, 0x2bb8e6].forEach((c, i) => {
+      const mk = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.13, 12), std(c, 0.4));
+      mk.rotation.z = Math.PI / 2;
+      mk.position.set(-0.2 + i * 0.16, -wbH / 2 - 0.018, 0.035);
+      wb.add(mk);
     });
+    wb.position.set(W / 2 - 0.02, 1.5, -0.1);
+    wb.rotation.y = -Math.PI / 2;
+    add(wb);
 
-    // contato: a lente grande
-    {
-      const R = 3.6;
-      const l = new THREE.Mesh(lensGeometry(R, 1), this.glassMat);
-      l.position.set(0, 1.6, -116);
-      add(l, { x: 0, z: -116, hx: R, hz: R, rot: 0, round: 1, amp: 0, bevel: 0.006, tile: lit.ola, calm: 1 }, 2.2);
+    /* ---------- parede do processo (acima da mesa) ---------- */
+    const pb = new THREE.Group();
+    const pbW = 2.55,
+      pbH = 0.85;
+    const pbS = new THREE.Mesh(new THREE.PlaneGeometry(pbW, pbH), new THREE.MeshStandardMaterial({ map: tex(processBoard(), r), roughness: 0.8, emissive: 0xffffff, emissiveIntensity: 0.25 }));
+    (pbS.material as THREE.MeshStandardMaterial).emissiveMap = (pbS.material as THREE.MeshStandardMaterial).map;
+    pbS.position.z = 0.0105;
+    pb.add(box(pbW + 0.04, pbH + 0.04, 0.02, std(0xffffff, 0.8), 0.006), pbS);
+    pb.position.set(0, 1.95, back + 0.012);
+    add(pb);
+
+    /* ---------- estante e planta ---------- */
+    const shelf = new THREE.Group();
+    const wood = std(C.oak, 0.7);
+    for (let i = 0; i < 4; i++) {
+      const b = box(0.9, 0.025, 0.3, wood, 0.004);
+      b.position.y = 0.35 + i * 0.42;
+      shelf.add(b);
     }
+    for (const sx of [-0.44, 0.44]) {
+      const side = box(0.025, 1.7, 0.3, wood, 0.004);
+      side.position.set(sx, 0.85, 0);
+      shelf.add(side);
+    }
+    const bookC = [0xe9e5dc, 0xc9c3f5, 0x15171d, 0xdfe2ea, 0xb7e9f7, 0xf4f5fa, 0x8b5cf6, 0xd2c5b0];
+    for (let r0 = 0; r0 < 3; r0++) {
+      let bx = -0.4,
+        k = r0 * 3;
+      while (bx < (r0 === 1 ? 0.05 : 0.36)) {
+        const bw = 0.025 + ((k * 7) % 4) * 0.008;
+        const bh = 0.24 + ((k * 13) % 5) * 0.022;
+        const b = box(bw, bh, 0.2, std(bookC[k % bookC.length], 0.8), 0.003);
+        b.position.set(bx + bw / 2, 0.3625 + r0 * 0.42 + bh / 2, 0);
+        shelf.add(b);
+        bx += bw + 0.004;
+        k++;
+      }
+    }
+    shelf.position.set(2.9, 0, back + 0.17);
+    blob(2.9, 0.003, back + 0.2, 1.2, 0.5, 0.3);
+    add(shelf);
+    const plant = new THREE.Group();
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.13, 0.36, 32), std(0xf6f6f8, 0.7));
+    pot.position.y = 0.18;
+    plant.add(pot);
+    const leafM = new THREE.MeshStandardMaterial({ color: 0x5d8a64, roughness: 0.55, side: THREE.DoubleSide });
+    // folha: contorno de gota, dobrada ao longo da nervura
+    const leafG = (() => {
+      const sh = new THREE.Shape();
+      const n = 14;
+      sh.moveTo(0, 0);
+      for (let i = 1; i <= n; i++) sh.lineTo(Math.pow(Math.sin((Math.PI * i) / n), 0.7) * 0.06 * (1 - i / n / 3), (i / n) * 0.26);
+      for (let i = n - 1; i >= 0; i--) sh.lineTo(-Math.pow(Math.sin((Math.PI * i) / n), 0.7) * 0.06 * (1 - i / n / 3), (i / n) * 0.26);
+      const g = new THREE.ShapeGeometry(sh, 6);
+      const p = g.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i),
+          y = p.getY(i);
+        p.setZ(i, Math.abs(x) * 0.5 - Math.pow(y / 0.26, 2) * 0.06);
+      }
+      g.computeVertexNormals();
+      return g;
+    })();
+    for (let i = 0; i < 34; i++) {
+      const a = i * 2.39,
+        h = 0.35 + (i % 9) * 0.07,
+        tilt = 0.15 + (i % 5) * 0.11;
+      const tip = new THREE.Vector3(Math.sin(a) * Math.sin(tilt) * h, 0.34 + Math.cos(tilt) * h, Math.cos(a) * Math.sin(tilt) * h);
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.005, h, 5), leafM);
+      stem.position.set(tip.x / 2, 0.34 + (tip.y - 0.34) / 2, tip.z / 2);
+      stem.lookAt(tip.x, tip.y + 10, tip.z);
+      stem.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(tip.x, tip.y - 0.34, tip.z).normalize());
+      const leaf = new THREE.Mesh(leafG, leafM);
+      leaf.position.copy(tip);
+      leaf.rotation.set(-0.6 - tilt, a, 0, 'YXZ');
+      plant.add(stem, leaf);
+    }
+    // vaso com terra
+    const soil = new THREE.Mesh(new THREE.CircleGeometry(0.16, 24), std(0x6b5a48, 1));
+    soil.rotation.x = -Math.PI / 2;
+    soil.position.y = 0.34;
+    plant.add(soil);
+    plant.position.set(-3.3, 0, back + 0.5);
+    blob(-3.3, 0.003, back + 0.5, 0.6, 0.6, 0.4);
+    add(plant);
 
-    // 6. paradas da câmera (uma por bloco de conteúdo)
+    /* ---------- paradas da câmera ---------- */
     const mob = this.mobile;
-    const S = (cam: [number, number, number], look: [number, number, number], lens: number, rest: [number, number]): Station => ({
-      cam: new THREE.Vector3(...cam),
-      look: new THREE.Vector3(...look),
-      lens,
-      rest,
-    });
-    this.stations = mob
-      ? [
-          S([0, 13, 8], [0, 0, -1.5], lit.chart, [0, 1.2]),
-          S([-2, 10, -12], [0.5, 0, -21], lit.name, [0.5, 0]),
-          S([-3.2, 11, -31], [-3.2, 0, -38.5], lit.ui, [-3.2, -33]),
-          S([3.4, 11, -43], [3.4, 0, -50.5], lit.ui, [3.4, -45]),
-          S([-3.2, 11, -55], [-3.2, 0, -62.5], lit.ui, [-3.2, -57]),
-          S([0, 15, -73], [0, 0, -80.5], lit.chart, [0, -75]),
-          S([0, 14, -91], [0, 0, -98.5], lit.chart, [0, -93]),
-          S([0, 15, -108], [0, 0, -116.5], lit.brand, [0, -111]),
-        ]
-      : [
-          S([-1, 7, 12], [3, 0.4, -3], lit.chart, [7.4, -1.5]),
-          S([-5, 7, -12], [2.5, 0, -21], lit.name, [4.5, -21]),
-          S([3.5, 8, -31], [-2.2, 0, -38.5], lit.ui, [5.2, -36]),
-          S([-3.5, 8, -43], [2.6, 0, -50.5], lit.ui, [-5, -48]),
-          S([3.5, 8, -55], [-2.2, 0, -62.5], lit.ui, [5.2, -60]),
-          S([0, 12.5, -71], [0, 0, -80.5], lit.chart, [0, -75]),
-          S([-9, 8.5, -91], [0, 0, -98.5], lit.chart, [0, -93.5]),
-          S([0, 13, -106], [0, 0, -116.5], lit.brand, [6.4, -112]),
-        ];
+    const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    const monLook = (i: number) => {
+      const [mx, ry] = mons[i];
+      const p = V(mx, monY, monZ(ry));
+      const n = V(Math.sin(ry), 0, Math.cos(ry));
+      return { look: p, cam: p.clone().addScaledVector(n, mob ? 1.55 : 1.3).add(V(0, 0.04, 0)) };
+    };
+    type Sh = [number, number];
+    const L: Sh = mob ? [0, 0.18] : [0.17, 0];
+    const R: Sh = mob ? [0, 0.18] : [-0.17, 0];
+    const m0 = monLook(0),
+      m1 = monLook(1),
+      m2 = monLook(2);
+    const S = (cam: THREE.Vector3, look: THREE.Vector3, shift: Sh): Station => ({ cam, look, shift });
+    this.stations = [
+      S(V(2.1, 1.6, 2.5), V(-0.05, 0.95, -2), mob ? [0, 0.12] : [0.15, 0]),
+      S(V(-0.35, 1.6, -0.75), V(-0.3, deskY, -2.0), L),
+      S(m0.cam, m0.look, R),
+      S(m1.cam, m1.look, L),
+      S(m2.cam, m2.look, R),
+      S(V(1.0, 1.5, -0.1), V(W / 2, 1.5, -0.1), R),
+      S(V(0, 1.62, mob ? 0.9 : 0.3), V(0, 1.78, back), mob ? [0, 0.2] : [0, 0]),
+      S(V(1.42, 1.02, -1.4), V(1.04, deskY + 0.11, deskZ + 0.08), L),
+    ];
     this.camCurve = new THREE.CatmullRomCurve3(this.stations.map((s) => s.cam), false, 'centripetal');
     this.lookCurve = new THREE.CatmullRomCurve3(this.stations.map((s) => s.look), false, 'centripetal');
-    this.lensPos.set(this.stations[0].rest[0], 0, this.stations[0].rest[1]);
+    this.shiftCurve = new THREE.CatmullRomCurve3(this.stations.map((s) => V(s.shift[0], s.shift[1], 0)), false, 'catmullrom', 0);
 
-    // 7. pós: profundidade de campo (o "foco")
-    if (this.tier !== 'low') this.makePost();
-
-    this.place(0);
-    // compila tudo antes do primeiro quadro para não engasgar
-    await (r as THREE.WebGLRenderer & { compileAsync?: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown> }).compileAsync?.(this.scene, this.camera);
-  }
-
-  private makePost() {
-    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 0 });
-    rt.depthTexture = new THREE.DepthTexture(1, 1);
-    this.rt = rt;
-    const mat = new THREE.ShaderMaterial({
-      vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,
-      fragmentShader: POST_FS,
-      uniforms: {
-        tColor: { value: rt.texture },
-        tDepth: { value: rt.depthTexture },
-        uRes: { value: new THREE.Vector2() },
-        uFocus: { value: 12 },
-        uAperture: { value: 0.55 },
-        uIntro: { value: 1 },
-        uNear: { value: this.camera.near },
-        uFar: { value: this.camera.far },
-      },
-      depthTest: false,
-      depthWrite: false,
-    });
-    const s = new THREE.Scene();
-    const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
-    q.frustumCulled = false;
-    s.add(q);
-    this.post = { scene: s, mat };
-    this.setSize();
+    // compila os shaders antes do primeiro quadro para não engasgar
+    r.compile(s, this.camera);
   }
 
   setSize() {
     const w = innerWidth,
       h = innerHeight;
-    const cap = this.tier === 'high' ? 1.75 : this.tier === 'mid' ? 1.25 : 1;
-    const dpr = Math.min(devicePixelRatio || 1, cap);
-    this.renderer.setPixelRatio(dpr);
+    const cap = this.tier === 'high' ? 2 : this.tier === 'mid' ? 1.5 : 1;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, cap));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
-    this.camera.fov = w < h ? 52 : 36;
+    this.camera.fov = w < h ? 58 : 38;
     this.camera.updateProjectionMatrix();
-    if (this.rt) {
-      this.rt.setSize(Math.floor(w * dpr), Math.floor(h * dpr));
-      this.post!.mat.uniforms.uRes.value.set(w * dpr, h * dpr);
-    }
   }
 
   /** 0..(paradas-1), contínuo */
   setProgress(p: number) {
     this.progress = THREE.MathUtils.clamp(p, 0, this.stations.length - 1);
   }
-  get stationCount() {
-    return this.stations.length;
-  }
-
   setPointer(x: number, y: number) {
     this.pointer.set(x, y);
     this.hasPointer = true;
@@ -539,8 +586,7 @@ export class World {
   clearPointer() {
     this.hasPointer = false;
   }
-
-  /** Abertura: foco sai do borrado para o nítido. */
+  /** Abertura: 1 = câmera ainda na porta. */
   setIntro(v: number) {
     this.intro = v;
   }
@@ -548,24 +594,10 @@ export class World {
     const t0 = performance.now();
     const step = () => {
       const k = Math.min(1, (performance.now() - t0) / ms);
-      this.intro = 1 - (1 - Math.pow(1 - k, 3));
+      this.intro = Math.pow(1 - k, 3);
       if (k < 1) requestAnimationFrame(step);
     };
     step();
-  }
-
-  private place(p: number) {
-    const u = p / (this.stations.length - 1);
-    this.camCurve.getPoint(u, this.camera.position);
-    const look = this.lookCurve.getPoint(u);
-    // leve paralaxe com o ponteiro
-    if (this.hasPointer && !this.still) {
-      this.camera.position.x += this.pointer.x * 0.35;
-      this.camera.position.y += this.pointer.y * 0.2;
-    }
-    this.camera.lookAt(look);
-    this.caustics.center.set(look.x, look.z - (this.mobile ? 1 : 5));
-    return look;
   }
 
   start() {
@@ -579,138 +611,78 @@ export class World {
     this.renderer.setAnimationLoop(null);
   }
 
+  private v = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3(), p2: new THREE.Vector3(), q2: new THREE.Quaternion(), s2: new THREE.Vector3(), zero: new THREE.Vector2() };
+
   frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
-    if (!this.still) this.time += dt;
     this.watch(dt);
 
-    // câmera segue a rolagem com inércia
-    const ease = this.still ? 1 : 1 - Math.exp(-dt * 6);
+    const ease = this.still ? 1 : 1 - Math.exp(-dt * 4.5);
     this.shown += (this.progress - this.shown) * ease;
-    const look = this.place(this.shown);
-    const st = this.stations[Math.round(this.shown)];
+    const u = this.shown / (this.stations.length - 1);
+    const cam = this.camera;
+    this.camCurve.getPoint(u, cam.position);
+    const look = this.lookCurve.getPoint(u);
+    if (this.intro > 0) {
+      const away = cam.position.clone().sub(look).normalize();
+      cam.position.addScaledVector(away, this.intro * 1.4);
+      cam.position.y += this.intro * 0.2;
+    }
+    // o olhar acompanha o ponteiro, de leve
+    const k = this.still ? 1 : 1 - Math.exp(-dt * 3);
+    this.smoothPtr.lerp(this.hasPointer ? this.pointer : this.v.zero, k);
+    const right = new THREE.Vector3().subVectors(look, cam.position).cross(cam.up).normalize();
+    const dist = cam.position.distanceTo(look);
+    cam.position.addScaledVector(right, this.smoothPtr.x * 0.03 * dist);
+    cam.position.y += this.smoothPtr.y * 0.018 * dist;
+    cam.lookAt(look);
+    // enquadramento: o objeto vai para o lado livre do texto
+    const sh = this.shiftCurve.getPoint(u);
+    const w = innerWidth,
+      h = innerHeight;
+    cam.setViewOffset(w, h, -sh.x * w, sh.y * h, w, h);
 
-    // lente do cursor: segue o ponto do chão sob o ponteiro, com mola
-    const target = new THREE.Vector3(st.rest[0], 0, st.rest[1]);
-    if (this.hasPointer && !this.mobile) {
-      this.ray.setFromCamera(this.pointer, this.camera);
-      this.ray.ray.intersectPlane(this.plane, target);
-    }
-    if (this.still) this.lensPos.copy(target);
-    else {
-      const k = 34,
-        damp = 9;
-      const a = target.clone().sub(this.lensPos).multiplyScalar(k).sub(this.lensVel.clone().multiplyScalar(damp));
-      this.lensVel.addScaledVector(a, dt);
-      this.lensPos.addScaledVector(this.lensVel, dt);
-    }
-    const lift = 1.5;
-    this.lens.position.set(this.lensPos.x, lift, this.lensPos.z);
-    this.lens.rotation.set(this.lensVel.z * 0.03, 0, -this.lensVel.x * 0.03);
-
-    // troca o desenho da lente com cruzamento suave
-    if (st.lens !== this.lensTile) {
-      const [a, b] = this.lensSlots;
-      if (b.on <= 0.02) {
-        b.tile = st.lens;
-        this.lensTile = st.lens;
-        this.lensSlots = [b, a];
-      }
-    }
-    const [cur, old] = this.lensSlots;
-    const fade = this.still ? 1 : Math.min(1, dt * 3.5);
-    cur.on += (1 - cur.on) * fade;
-    old.on += (0 - old.on) * (this.still ? 1 : Math.min(1, dt * 5));
-    for (const s of this.lensSlots) {
-      s.x = this.lensPos.x;
-      s.z = this.lensPos.z;
+    // a papelada se arruma entre a abertura e o "quem sou"
+    const t = THREE.MathUtils.clamp(this.shown, 0, 1);
+    const { p, q, s, p2, q2, s2 } = this.v;
+    for (const pp of this.papers) {
+      const lt = THREE.MathUtils.smootherstep(THREE.MathUtils.clamp((t - pp.delay * 0.45) / 0.55, 0, 1), 0, 1);
+      pp.mess.decompose(p, q, s);
+      pp.neat.decompose(p2, q2, s2);
+      p.lerp(p2, lt);
+      p.y += Math.sin(lt * Math.PI) * 0.16;
+      q.slerp(q2, lt);
+      pp.mesh.matrix.compose(p, q, s);
+      pp.mesh.matrixWorldNeedsUpdate = true;
     }
 
-    // peças perto da janela de luz ganham os espaços livres
-    const c = this.caustics;
-    const half = c.size / 2;
-    const active: Glass[] = [this.lensSlots[0], this.lensSlots[1]];
-    for (const pc of this.pieces) {
-      const g = pc.glass;
-      const dx = Math.abs(g.x - c.center.x) + Math.max(g.hx, g.hz),
-        dz = Math.abs(g.z - c.center.y) + Math.max(g.hx, g.hz);
-      const inside = dx < half * 0.92 && dz < half * 0.92;
-      g.on += ((inside ? 1 : 0) - g.on) * (this.still ? 1 : Math.min(1, dt * 4));
-      if (g.on > 0.002 && active.length < MAX_GLASS) active.push(g);
-      // flutua devagar
-      if (!this.still) pc.mesh.position.y += Math.sin(this.time * 0.6 + g.x) * 0.0009;
-    }
-    c.glass.length = 0;
-    c.glass.push(...active);
-    // a água acalma perto dos vidros que formam imagem
-    c.water = this.waterAmp;
-    c.update(this.renderer, this.time);
-    this.syncFloor(active);
-
-    // foco da lente da câmera: no ponto que ela olha
-    if (this.post) {
-      const u = this.post.mat.uniforms;
-      u.uFocus.value = this.camera.position.distanceTo(look);
-      u.uIntro.value = this.intro;
-      u.uAperture.value = this.tier === 'high' ? 0.5 : 0.35;
-      this.renderer.setRenderTarget(this.rt!);
-      this.renderer.render(this.scene, this.camera);
-      this.renderer.setRenderTarget(null);
-      this.renderer.render(this.post.scene, this.camera);
-    } else {
-      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-      this.renderer.render(this.scene, this.camera);
-    }
-  }
-
-  private syncFloor(active: Glass[]) {
-    const u = this.floorMat.uniforms;
-    const pack = (f: (g: Glass) => [number, number, number, number]) =>
-      Array.from({ length: MAX_GLASS }, (_, i) => (active[i] ? new THREE.Vector4(...f(active[i])) : new THREE.Vector4(0, 0, 1, 1)));
-    u.uG0.value = pack((g) => [g.x, g.z, g.hx, g.hz]);
-    u.uG1.value = pack((g) => [g.rot, g.round, g.amp, g.shot ?? -1]);
-    u.uG2.value = Array.from({ length: MAX_GLASS }, (_, i) => (active[i] ? new THREE.Vector4(active[i].tile, active[i].calm, active[i].on, active[i].ramp ?? 0) : new THREE.Vector4(-1, 0, 0, 0)));
-    u.uSize.value = this.caustics.size;
+    this.renderer.render(this.scene, cam);
   }
 
   /** Mede o tempo de quadro e reduz a cena sozinho se o PC estiver sofrendo. */
   private watch(dt: number) {
-    if (this.tier === 'low') return;
+    if (this.tier === 'low' || this.still) return;
     this.frames.push(dt);
     if (this.frames.length < 120) return;
     const avg = this.frames.reduce((a, b) => a + b, 0) / this.frames.length;
     this.frames.length = 0;
     if (avg > 1 / 40) {
       this.tier = this.tier === 'high' ? 'mid' : 'low';
-      if (this.tier === 'low' && this.post) {
-        this.post = undefined;
-        this.rt?.dispose();
-        this.rt = undefined;
+      if (this.tier === 'low') {
+        this.renderer.shadowMap.enabled = false;
+        this.sun.castShadow = false;
+        this.scene.traverse((o) => {
+          const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+          if (m) m.needsUpdate = true;
+        });
       }
       this.setSize();
       this.onTier?.(this.tier);
     }
   }
 
-  /** Depuração: mostra o atlas de luz na tela. */
-  debugAtlas() {
-    const m = new THREE.Mesh(
-      new THREE.PlaneGeometry(2, 2),
-      new THREE.ShaderMaterial({
-        uniforms: { t: { value: this.lights.rt.texture } },
-        vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,
-        fragmentShader: `uniform sampler2D t;varying vec2 vUv;void main(){gl_FragColor=vec4(texture2D(t,vUv).rgb*.4,1.);}`,
-      }),
-    );
-    const s = new THREE.Scene();
-    s.add(m);
-    this.renderer.setRenderTarget(null);
-    this.renderer.render(s, this.camera);
-  }
-
   dispose() {
     this.stop();
-    this.caustics?.dispose();
     this.renderer.dispose();
   }
 }

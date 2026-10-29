@@ -449,7 +449,7 @@ async function boot3d() {
     return;
   }
   const { World } = await import('./world/World');
-  await Promise.all([document.fonts.load('italic 500 100px Newsreader'), document.fonts.load('500 100px Newsreader')]);
+  await Promise.all(['italic 300 100px Newsreader', '400 100px Newsreader', '400 20px Geist', '600 20px Geist', '400 20px "Geist Mono"'].map((f) => document.fonts.load(f)));
   const canvas = $<HTMLCanvasElement>('.stage__gl');
   try {
     const w = new World(canvas, tier, { still: reduced });
