@@ -547,7 +547,7 @@ export class World {
       m2 = monLook(2);
     const S = (cam: THREE.Vector3, look: THREE.Vector3, shift: Sh): Station => ({ cam, look, shift });
     this.stations = [
-      S(V(2.1, 1.6, 2.5), V(-0.05, 0.95, -2), mob ? [0, 0.14] : [0.26, 0]),
+      S(V(2.1, 1.6, 2.5), V(-0.05, 0.95, -2), mob ? [0, 0.14] : [0.3, 0]),
       S(V(-0.35, 1.6, -0.75), V(-0.3, deskY, -2.0), L),
       S(m0.cam, m0.look, R),
       S(m1.cam, m1.look, L),
