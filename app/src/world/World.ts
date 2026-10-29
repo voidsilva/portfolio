@@ -547,14 +547,14 @@ export class World {
       m2 = monLook(2);
     const S = (cam: THREE.Vector3, look: THREE.Vector3, shift: Sh): Station => ({ cam, look, shift });
     this.stations = [
-      S(V(2.1, 1.6, 2.5), V(-0.05, 0.95, -2), mob ? [0, 0.12] : [0.15, 0]),
+      S(V(2.1, 1.6, 2.5), V(-0.05, 0.95, -2), mob ? [0, 0.14] : [0.26, 0]),
       S(V(-0.35, 1.6, -0.75), V(-0.3, deskY, -2.0), L),
       S(m0.cam, m0.look, R),
       S(m1.cam, m1.look, L),
       S(m2.cam, m2.look, R),
       S(V(1.0, 1.5, -0.1), V(W / 2, 1.5, -0.1), R),
       S(V(0, 1.62, mob ? 0.9 : 0.3), V(0, 1.78, back), mob ? [0, 0.2] : [0, 0]),
-      S(V(1.42, 1.02, -1.4), V(1.04, deskY + 0.11, deskZ + 0.08), L),
+      S(V(1.5, 1.04, -1.28), V(1.04, deskY + 0.11, deskZ + 0.08), mob ? L : [0.24, 0]),
     ];
     this.camCurve = new THREE.CatmullRomCurve3(this.stations.map((s) => s.cam), false, 'centripetal');
     this.lookCurve = new THREE.CatmullRomCurve3(this.stations.map((s) => s.look), false, 'centripetal');
