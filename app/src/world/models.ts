@@ -56,6 +56,10 @@ export interface Mats {
   fabric: THREE.Material;
   ceramic: THREE.Material;
   purple: THREE.Material;
+  matte: THREE.Material; // branco fosco de móvel
+  felt: THREE.Material; // feltro cinza do mouse pad
+  frame: THREE.Material; // plástico cinza claro da cadeira
+  slat: THREE.Material; // ripas do painel acústico
 }
 
 export function makeMats(): Mats {
@@ -68,94 +72,144 @@ export function makeMats(): Mats {
     white: s({ color: 0xf6f6f8, roughness: 0.45, clearcoat: 0.4, clearcoatRoughness: 0.3 }),
     plastic: s({ color: 0xeceef2, roughness: 0.38 }),
     rubber: s({ color: 0x23252b, roughness: 0.85 }),
-    fabric: s({ color: 0xc9cbd2, roughness: 0.95, sheen: 1, sheenColor: new THREE.Color(0xffffff), sheenRoughness: 0.6 }),
+    fabric: s({ color: 0x9fa2aa, roughness: 0.95, sheen: 1, sheenColor: new THREE.Color(0xffffff), sheenRoughness: 0.6 }),
     ceramic: s({ color: 0xefebe4, roughness: 0.55, clearcoat: 0.6, clearcoatRoughness: 0.25 }),
     purple: s({ color: 0x8b5cf6, roughness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.15 }),
+    matte: s({ color: 0xf4f4f6, roughness: 0.5, clearcoat: 0.25, clearcoatRoughness: 0.5 }),
+    felt: s({ color: 0xc4c7ce, roughness: 1, sheen: 0.6, sheenColor: new THREE.Color(0xffffff), sheenRoughness: 0.8 }),
+    frame: s({ color: 0x8d9099, roughness: 0.45, clearcoat: 0.3, clearcoatRoughness: 0.4 }),
+    slat: s({ color: 0xa9adb5, roughness: 0.7 }),
   };
 }
 
-/* ---------- mesa ---------- */
+/* ---------- mesa branca com gaveteiro ---------- */
 
-export function desk(m: Mats, top: THREE.Material, w = 2.6, d = 0.82, h = 0.74) {
+export function desk(m: Mats, w = 2.8, d = 0.8, h = 0.74) {
   const g = new THREE.Group();
-  const t = 0.036;
-  const board = new THREE.Mesh(slab(w, d, t, 0.03, 0.006), top);
+  const t = 0.03;
+  const board = new THREE.Mesh(slab(w, d, t, 0.012, 0.004), m.matte);
   board.position.y = h - t / 2;
   g.add(board);
-  // estrutura em tubo retangular, pés em "T" invertido
-  for (const sx of [-1, 1]) {
-    const x = sx * (w / 2 - 0.16);
-    const leg = new THREE.Mesh(rbox(0.06, h - t - 0.02, 0.025, 0.004), m.steel);
-    leg.position.set(x, (h - t) / 2 + 0.01, 0);
-    const foot = new THREE.Mesh(rbox(0.07, 0.025, d - 0.06, 0.006), m.steel);
-    foot.position.set(x, 0.0125, 0);
-    const arm = new THREE.Mesh(rbox(0.05, 0.025, d - 0.12, 0.004), m.steel);
-    arm.position.set(x, h - t - 0.0125, 0);
-    const glide1 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, 0.008, 16), m.rubber);
-    glide1.position.set(x, 0.004 - 0.004, d / 2 - 0.05);
-    const glide2 = glide1.clone();
-    glide2.position.z = -d / 2 + 0.05;
-    g.add(leg, foot, arm, glide1, glide2);
-  }
-  const beam = new THREE.Mesh(rbox(w - 0.36, 0.05, 0.025, 0.004), m.steel);
-  beam.position.set(0, h - t - 0.05, -d / 2 + 0.12);
-  // calha de cabos
-  const tray = new THREE.Mesh(rbox(1.1, 0.06, 0.12, 0.004), m.steel);
-  tray.position.set(0, h - t - 0.09, -d / 2 + 0.14);
-  g.add(beam, tray);
+  // lado esquerdo: painel inteiro, lado direito: gaveteiro com três gavetas
+  const panel = new THREE.Mesh(rbox(0.03, h - t, d - 0.04, 0.004), m.matte);
+  panel.position.set(-w / 2 + 0.06, (h - t) / 2, 0);
+  g.add(panel);
+  const pw = 0.44,
+    px = w / 2 - pw / 2 - 0.02;
+  const carcass = new THREE.Mesh(rbox(pw, h - t, d - 0.04, 0.004), m.matte);
+  carcass.position.set(px, (h - t) / 2, -0.004);
+  g.add(carcass);
+  const gap = new THREE.MeshStandardMaterial({ color: 0x9a9da6, roughness: 0.8 });
+  const rows = [0.2, 0.2, 0.26];
+  let y = h - t - 0.025;
+  rows.forEach((rh) => {
+    const front = new THREE.Mesh(rbox(pw - 0.012, rh - 0.006, 0.02, 0.004), m.matte);
+    front.position.set(px, y - rh / 2, d / 2 - 0.024 + 0.006);
+    // puxador cavado: um vinco escuro no topo da frente
+    const grip = new THREE.Mesh(new THREE.PlaneGeometry(pw - 0.07, 0.008), gap);
+    grip.position.set(px, y - 0.012, d / 2 - 0.0035);
+    g.add(front, grip);
+    y -= rh;
+  });
+  // painel de fundo baixo entre os dois apoios
+  const modesty = new THREE.Mesh(rbox(w - pw - 0.12, 0.3, 0.018, 0.003), m.matte);
+  modesty.position.set(-pw / 2 + 0.01, h - t - 0.17, -d / 2 + 0.06);
+  g.add(modesty);
   return { group: g, top: h };
 }
 
-/* ---------- monitor ---------- */
+/* ---------- monitor curvo ---------- */
 
-export function monitor(m: Mats, screen: THREE.Material, w = 0.6, h = 0.34) {
+/** Curva a geometria em torno de um eixo vertical à frente da tela (raio R): bordas vêm para quem olha. */
+export function bend(geo: THREE.BufferGeometry, R: number) {
+  const p = geo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i),
+      z = p.getZ(i);
+    const a = x / R;
+    p.setX(i, (R - z) * Math.sin(a));
+    p.setZ(i, R - (R - z) * Math.cos(a));
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+export function monitor(m: Mats, screen: THREE.Material, w = 0.6, h = 0.3375, R = 1.0) {
   const g = new THREE.Group();
   const panel = new THREE.Group();
-  // moldura fina e traseira abaulada
-  const front = new THREE.Mesh(rbox(w + 0.014, h + 0.014, 0.01, 0.004), m.steel);
-  const backShell = new THREE.Mesh(rbox(w + 0.006, h + 0.006, 0.014, 0.006), m.plastic);
-  backShell.position.z = -0.011;
-  const bulge = new THREE.Mesh(rbox(w * 0.6, h * 0.62, 0.04, 0.018, 4), m.plastic);
-  bulge.position.set(0, -h * 0.05, -0.024);
-  const chin = new THREE.Mesh(rbox(w + 0.014, 0.016, 0.012, 0.004), m.alu);
-  chin.position.set(0, -h / 2 - 0.012, 0.0);
-  const scr = new THREE.Mesh(new THREE.PlaneGeometry(w, h), screen);
-  scr.position.z = 0.0051;
-  // vidro: só reflexo
+  const seg = 48;
+  const box = (bw: number, bh: number, bd: number, z: number) => {
+    const geo = new THREE.BoxGeometry(bw, bh, bd, seg, 1, 1);
+    geo.translate(0, 0, z);
+    return bend(geo, R);
+  };
+  // moldura preta finíssima e traseira branca
+  const front = new THREE.Mesh(box(w + 0.01, h + 0.012, 0.008, 0), m.steel);
+  const shell = new THREE.Mesh(box(w + 0.008, h + 0.01, 0.014, -0.011), m.white);
+  const bulge = new THREE.Mesh(box(w * 0.56, h * 0.62, 0.03, -0.03), m.white);
+  bulge.position.y = -h * 0.04;
+  const sg = new THREE.PlaneGeometry(w, h, seg, 1);
+  sg.translate(0, 0, 0.0042);
+  const scr = new THREE.Mesh(bend(sg, R), screen);
+  const gg = new THREE.PlaneGeometry(w + 0.008, h + 0.008, seg, 1);
+  gg.translate(0, 0, 0.0047);
   const glass = new THREE.Mesh(
-    new THREE.PlaneGeometry(w + 0.01, h + 0.01),
-    new THREE.MeshPhysicalMaterial({ color: 0x000000, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.14, clearcoat: 1, depthWrite: false }),
+    bend(gg, R),
+    new THREE.MeshPhysicalMaterial({ color: 0x000000, roughness: 0.05, transparent: true, opacity: 0.12, clearcoat: 1, depthWrite: false }),
   );
-  glass.position.z = 0.0056;
   glass.userData.noAO = true;
-  panel.add(front, backShell, bulge, chin, scr, glass);
+  // faixa de luz ambiente atrás, refletida na parede
+  panel.add(front, shell, bulge, scr, glass);
 
-  // pé: braço em arco de alumínio
-  const prof = new THREE.Shape();
-  prof.moveTo(0, 0);
-  prof.lineTo(0.03, 0);
-  prof.bezierCurveTo(0.03, 0.12, -0.01, 0.2, -0.045, 0.28);
-  prof.lineTo(-0.07, 0.28);
-  prof.bezierCurveTo(-0.035, 0.2, 0.0, 0.12, 0, 0);
-  const neckG = new THREE.ExtrudeGeometry(prof, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 3, curveSegments: 24 });
-  neckG.translate(0, 0, -0.025);
-  neckG.rotateY(Math.PI / 2);
-  const neck = new THREE.Mesh(neckG, m.alu);
-  neck.position.set(0, 0.01, -0.07);
-  const foot = new THREE.Mesh(slab(0.25, 0.19, 0.01, 0.06, 0.003), m.alu);
-  foot.position.set(0, 0.005, -0.05);
-  g.add(foot, neck);
-  panel.position.set(0, 0.29 + h / 2 - 0.06, 0.0);
-  panel.rotation.x = -0.06;
+  // pé branco: base oval rasa e haste plana levemente inclinada
+  const foot = new THREE.Mesh(slab(0.27, 0.2, 0.012, 0.09, 0.004), m.white);
+  foot.position.set(0, 0.006, -0.06);
+  const neckG = rbox(0.075, 0.33, 0.022, 0.01, 4);
+  const neck = new THREE.Mesh(neckG, m.white);
+  neck.position.set(0, 0.17, -0.085);
+  neck.rotation.x = 0.1;
+  const hinge = new THREE.Mesh(rbox(0.1, 0.05, 0.03, 0.01), m.white);
+  hinge.position.set(0, 0.3, -0.07);
+  g.add(foot, neck, hinge);
+  const top = 0.3 + 0.04;
+  panel.position.set(0, top, -0.03);
+  panel.rotation.x = -0.05;
   g.add(panel);
-  return { group: g, panel, screen: scr, height: 0.29 + h / 2 - 0.06 };
+  return { group: g, panel, screen: scr, height: top + h / 2 };
+}
+
+/** Barra de luz sobre o monitor central: acende junto com as telas. */
+export function lightBar(m: Mats, len = 0.5) {
+  const g = new THREE.Group();
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, len, 24), m.steel);
+  bar.rotation.z = Math.PI / 2;
+  const capA = new THREE.Mesh(new THREE.CylinderGeometry(0.0115, 0.0115, 0.012, 24), m.alu);
+  capA.rotation.z = Math.PI / 2;
+  capA.position.x = len / 2;
+  const capB = capA.clone();
+  capB.position.x = -len / 2;
+  // gancho que apoia na traseira do monitor
+  const clip = new THREE.Mesh(rbox(0.04, 0.05, 0.03, 0.006), m.steel);
+  clip.position.set(0, -0.025, -0.03);
+  const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.94, 0.86), toneMapped: false });
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(len - 0.04, 0.008), glowMat);
+  glow.rotation.x = Math.PI / 2 + 0.5;
+  glow.position.set(0, -0.0105, 0.004);
+  glow.userData.noAO = true;
+  g.add(bar, capA, capB, clip, glow);
+  return { group: g, glow: glowMat };
+}
+
+/** Mouse pad de feltro, grande. */
+export function deskMat(m: Mats, w = 1.0, d = 0.4) {
+  return new THREE.Mesh(slab(w, d, 0.003, 0.02, 0.001), m.felt);
 }
 
 /* ---------- teclado e mouse ---------- */
 
 export function keyboard(m: Mats) {
   const g = new THREE.Group();
-  const base = new THREE.Mesh(slab(0.44, 0.14, 0.012, 0.01, 0.002), m.alu);
+  const base = new THREE.Mesh(slab(0.44, 0.14, 0.012, 0.01, 0.002), m.white);
   base.position.y = 0.006;
   base.rotation.x = 0.04;
   g.add(base);
@@ -170,7 +224,7 @@ export function keyboard(m: Mats) {
   const cap = rbox(1, 0.007, 1, 0.0025, 2);
   let n = 0;
   rows.forEach((r) => (n += r.length));
-  const keys = new THREE.InstancedMesh(cap, m.plastic, n);
+  const keys = new THREE.InstancedMesh(cap, m.matte, n);
   const accent = new THREE.InstancedMesh(cap, m.purple, 1);
   const mm = new THREE.Matrix4();
   let k = 0;
@@ -242,20 +296,20 @@ export function chair(m: Mats, r: THREE.WebGLRenderer) {
     hd.translate(Math.cos(a) * 0.31, 0.045, -Math.sin(a) * 0.31);
     hood.push(hd);
   }
-  g.add(new THREE.Mesh(mergeGeometries(legs), m.alu), new THREE.Mesh(mergeGeometries(casters), m.rubber), new THREE.Mesh(mergeGeometries(hood), m.steel));
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.05, 24), m.alu);
+  g.add(new THREE.Mesh(mergeGeometries(legs), m.frame), new THREE.Mesh(mergeGeometries(casters), m.rubber), new THREE.Mesh(mergeGeometries(hood), m.frame));
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.05, 24), m.frame);
   hub.position.y = 0.1;
   const gas = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.18, 20), m.chrome);
   gas.position.y = 0.22;
-  const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.034, 0.12, 20), m.steel);
+  const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.034, 0.12, 20), m.frame);
   sleeve.position.y = 0.17;
-  const mech = new THREE.Mesh(rbox(0.2, 0.04, 0.24, 0.01), m.steel);
+  const mech = new THREE.Mesh(rbox(0.2, 0.04, 0.24, 0.01), m.frame);
   mech.position.y = 0.33;
   g.add(hub, gas, sleeve, mech);
   // assento estofado
   const seat = new THREE.Mesh(slab(0.5, 0.48, 0.07, 0.09, 0.025), m.fabric);
   seat.position.set(0, 0.39, 0.0);
-  const shell = new THREE.Mesh(slab(0.48, 0.46, 0.02, 0.085, 0.006), m.steel);
+  const shell = new THREE.Mesh(slab(0.48, 0.46, 0.02, 0.085, 0.006), m.frame);
   shell.position.set(0, 0.35, 0);
   g.add(seat, shell);
   // encosto de tela, curvo, com aro
@@ -266,7 +320,7 @@ export function chair(m: Mats, r: THREE.WebGLRenderer) {
   const meshT = toTex(meshTex(256), r, false, [6, 6]);
   const net = new THREE.Mesh(
     new THREE.CylinderGeometry(R, R, bh, 32, 1, true, -th / 2 + Math.PI, th),
-    new THREE.MeshStandardMaterial({ color: 0x2a2d35, roughness: 0.8, alphaMap: meshT, alphaTest: 0.35, side: THREE.DoubleSide }),
+    new THREE.MeshStandardMaterial({ color: 0x5d6169, roughness: 0.8, alphaMap: meshT, alphaTest: 0.35, side: THREE.DoubleSide }),
   );
   const ring: THREE.Vector3[] = [];
   const N = 48;
@@ -281,8 +335,32 @@ export function chair(m: Mats, r: THREE.WebGLRenderer) {
     const ang = Math.PI + (ax * th) / 2 * 0.98;
     ring.push(new THREE.Vector3(Math.sin(ang) * R, (ay * bh) / 2 * 0.98, Math.cos(ang) * R));
   }
-  const frame = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ring, true, 'catmullrom', 0.05), 160, 0.012, 10, true), m.steel);
+  const frame = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ring, true, 'catmullrom', 0.05), 160, 0.014, 10, true), m.frame);
   back.add(net, frame);
+  // apoio lombar: barra estofada atravessando a tela
+  const lumbar = new THREE.Mesh(new THREE.CylinderGeometry(R - 0.02, R - 0.02, 0.07, 32, 1, true, -th / 2.6 + Math.PI, th / 1.3), m.frame);
+  lumbar.position.y = -bh * 0.22;
+  back.add(lumbar);
+  // encosto de cabeça: tela curva menor sobre uma haste
+  const hr = new THREE.Group();
+  const hth = 0.56,
+    hh = 0.13;
+  const hnet = new THREE.Mesh(new THREE.CylinderGeometry(R, R, hh, 24, 1, true, -hth / 2 + Math.PI, hth), net.material);
+  const hring: THREE.Vector3[] = [];
+  for (let i = 0; i <= 32; i++) {
+    const t = (i / 32) * Math.PI * 2;
+    const ax = Math.cos(t),
+      ay = Math.sin(t);
+    const k = Math.pow(Math.abs(ax), 0.25) * Math.sign(ax),
+      l = Math.pow(Math.abs(ay), 0.25) * Math.sign(ay);
+    const ang = Math.PI + ((k * hth) / 2) * 0.98;
+    hring.push(new THREE.Vector3(Math.sin(ang) * R, ((l * hh) / 2) * 0.98, Math.cos(ang) * R));
+  }
+  hr.add(hnet, new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(hring, true, 'catmullrom', 0.1), 96, 0.016, 10, true), m.frame));
+  hr.position.y = bh / 2 + 0.11;
+  const stem = new THREE.Mesh(rbox(0.05, 0.14, 0.02, 0.008), m.frame);
+  stem.position.set(0, bh / 2 + 0.03, -R + 0.012);
+  back.add(hr, stem);
   back.position.set(0, 0.83, 0.55 + 0.23);
   back.rotation.x = -0.12;
   // haste que liga encosto e assento
@@ -294,16 +372,16 @@ export function chair(m: Mats, r: THREE.WebGLRenderer) {
   const spG = new THREE.ExtrudeGeometry(spineShape, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.006, bevelSegments: 2 });
   spG.translate(0, 0, -0.025);
   spG.rotateY(-Math.PI / 2);
-  const sp = new THREE.Mesh(spG, m.steel);
+  const sp = new THREE.Mesh(spG, m.frame);
   sp.position.set(0, 0.33, 0.02);
   g.add(back, sp);
   // braços em "T"
   for (const sx of [-1, 1]) {
-    const post = new THREE.Mesh(rbox(0.03, 0.22, 0.05, 0.008), m.steel);
+    const post = new THREE.Mesh(rbox(0.03, 0.22, 0.05, 0.008), m.frame);
     post.position.set(sx * 0.27, 0.48, 0.05);
-    const pad = new THREE.Mesh(rbox(0.07, 0.025, 0.24, 0.012, 4), m.rubber);
+    const pad = new THREE.Mesh(rbox(0.07, 0.025, 0.24, 0.012, 4), m.fabric);
     pad.position.set(sx * 0.27, 0.6, 0.02);
-    const brace = new THREE.Mesh(rbox(0.03, 0.02, 0.14, 0.006), m.steel);
+    const brace = new THREE.Mesh(rbox(0.03, 0.02, 0.14, 0.006), m.frame);
     brace.position.set(sx * 0.2, 0.36, 0.05);
     brace.rotation.z = sx * 0.6;
     g.add(post, pad, brace);
@@ -409,36 +487,36 @@ export function plant(m: Mats, r: THREE.WebGLRenderer, seed = 4) {
 
 export function deskLamp(m: Mats) {
   const g = new THREE.Group();
-  const base = new THREE.Mesh(new THREE.LatheGeometry([V2(0, 0), V2(0.085, 0), V2(0.088, 0.008), V2(0.08, 0.018), V2(0.02, 0.024), V2(0, 0.024)], 48), m.steel);
+  const base = new THREE.Mesh(new THREE.LatheGeometry([V2(0, 0), V2(0.085, 0), V2(0.088, 0.008), V2(0.08, 0.018), V2(0.02, 0.024), V2(0, 0.024)], 48), m.white);
   g.add(base);
   const yaw = new THREE.Group();
   yaw.position.y = 0.024;
   g.add(yaw);
-  const j0 = new THREE.Mesh(new THREE.SphereGeometry(0.014, 16, 12), m.alu);
+  const j0 = new THREE.Mesh(new THREE.SphereGeometry(0.014, 16, 12), m.frame);
   yaw.add(j0);
   const arm1 = new THREE.Group();
   arm1.rotation.z = 0.35;
   yaw.add(arm1);
-  const rod1 = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.36, 12), m.steel);
+  const rod1 = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.36, 12), m.white);
   rod1.position.y = 0.18;
   arm1.add(rod1);
   const elbow = new THREE.Group();
   elbow.position.y = 0.36;
   arm1.add(elbow);
-  elbow.add(new THREE.Mesh(new THREE.SphereGeometry(0.013, 16, 12), m.alu));
+  elbow.add(new THREE.Mesh(new THREE.SphereGeometry(0.013, 16, 12), m.frame));
   const arm2 = new THREE.Group();
   arm2.rotation.z = -1.55;
   elbow.add(arm2);
-  const rod2 = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.32, 12), m.steel);
+  const rod2 = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.32, 12), m.white);
   rod2.position.y = 0.16;
   arm2.add(rod2);
   const head = new THREE.Group();
   head.position.y = 0.32;
   arm2.add(head);
-  head.add(new THREE.Mesh(new THREE.SphereGeometry(0.012, 16, 12), m.alu));
+  head.add(new THREE.Mesh(new THREE.SphereGeometry(0.012, 16, 12), m.frame));
   const shadeG = new THREE.LatheGeometry([V2(0.012, 0), V2(0.02, 0.01), V2(0.03, 0.04), V2(0.06, 0.1), V2(0.062, 0.102)], 40);
   shadeG.rotateX(Math.PI);
-  const shadeOut = new THREE.Mesh(shadeG, m.steel);
+  const shadeOut = new THREE.Mesh(shadeG, m.white);
   const pivot = new THREE.Group(); // aponta a cúpula
   head.add(pivot);
   pivot.add(shadeOut);
@@ -584,4 +662,296 @@ export function paperGeometry(u0: number, v0: number, size = 0.25) {
   g.computeVertexNormals();
   g.rotateX(-Math.PI / 2);
   return g;
+}
+
+/* ---------- folhagem: folhas pequenas instanciadas ---------- */
+
+function smallLeaf() {
+  const { c, x } = canvas(64, 128);
+  x.clearRect(0, 0, 64, 128);
+  x.beginPath();
+  x.moveTo(32, 124);
+  x.bezierCurveTo(4, 96, 4, 36, 32, 4);
+  x.bezierCurveTo(60, 36, 60, 96, 32, 124);
+  const g = x.createLinearGradient(0, 0, 64, 0);
+  g.addColorStop(0, '#5F9157');
+  g.addColorStop(0.5, '#4C7F4A');
+  g.addColorStop(1, '#3B6A3E');
+  x.fillStyle = g;
+  x.fill();
+  x.strokeStyle = 'rgba(205,235,180,.45)';
+  x.lineWidth = 2;
+  x.beginPath();
+  x.moveTo(32, 122);
+  x.lineTo(32, 10);
+  x.stroke();
+  return c;
+}
+
+let leafMatCache: THREE.Material | null = null;
+function leafMat(r: THREE.WebGLRenderer) {
+  if (!leafMatCache) leafMatCache = new THREE.MeshStandardMaterial({ map: toTex(smallLeaf(), r), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.5 });
+  return leafMatCache;
+}
+
+/** Tufo de folhas em volta de um centro, viradas para fora. */
+export function foliage(r: THREE.WebGLRenderer, clumps: { c: THREE.Vector3; r: number; n: number }[], size = 0.035, seed = 9) {
+  const rnd = seeded(seed);
+  const total = clumps.reduce((a, b) => a + b.n, 0);
+  const geo = new THREE.PlaneGeometry(size * 0.55, size, 1, 2);
+  geo.translate(0, size / 2, 0);
+  const im = new THREE.InstancedMesh(geo, leafMat(r), total);
+  const mm = new THREE.Matrix4(),
+    q = new THREE.Quaternion(),
+    v = new THREE.Vector3(),
+    col = new THREE.Color();
+  let k = 0;
+  for (const cl of clumps)
+    for (let i = 0; i < cl.n; i++) {
+      // ponto na casca de uma esfera achatada
+      const u = rnd() * 2 - 1,
+        a = rnd() * Math.PI * 2;
+      const s = Math.sqrt(1 - u * u);
+      const dir = new THREE.Vector3(s * Math.cos(a), Math.abs(u) * 0.75 + 0.1, s * Math.sin(a)).normalize();
+      v.copy(cl.c).addScaledVector(dir, cl.r * (0.55 + rnd() * 0.45));
+      q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().lerp(new THREE.Vector3(0, 1, 0), 0.25).normalize());
+      q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * Math.PI * 2));
+      q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.5 + rnd() * 0.5));
+      const sc = 0.7 + rnd() * 0.6;
+      mm.compose(v, q, new THREE.Vector3(sc, sc, sc));
+      im.setMatrixAt(k, mm);
+      col.setHSL(0.27 + rnd() * 0.05, 0.35, 0.82 + rnd() * 0.25);
+      im.setColorAt(k++, col);
+    }
+  return im;
+}
+
+/** Vaso branco pequeno de mesa com uma planta cheia. */
+export function deskPlant(m: Mats, r: THREE.WebGLRenderer, seed = 3) {
+  const g = new THREE.Group();
+  const pot = new THREE.Mesh(new THREE.LatheGeometry([V2(0, 0), V2(0.05, 0), V2(0.056, 0.005), V2(0.06, 0.09), V2(0.062, 0.095), V2(0.055, 0.095), V2(0, 0.085)], 40), m.ceramic);
+  g.add(pot);
+  const rnd = seeded(seed);
+  const clumps = Array.from({ length: 6 }, (_, i) => ({ c: new THREE.Vector3((rnd() - 0.5) * 0.09, 0.12 + rnd() * 0.07 + (i === 0 ? 0.05 : 0), (rnd() - 0.5) * 0.09), r: 0.075, n: 34 }));
+  g.add(foliage(r, clumps, 0.062, seed));
+  return g;
+}
+
+/** Bonsai: tronco torcido e copas em nuvem, num vaso raso. */
+export function bonsai(m: Mats, r: THREE.WebGLRenderer) {
+  const g = new THREE.Group();
+  const pot = new THREE.Mesh(rbox(0.2, 0.045, 0.13, 0.008), m.ceramic);
+  pot.position.y = 0.0225;
+  const soil = new THREE.Mesh(rbox(0.185, 0.004, 0.115, 0.002), new THREE.MeshStandardMaterial({ color: 0x4a3d31, roughness: 1 }));
+  soil.position.y = 0.044;
+  g.add(pot, soil);
+  const bark = new THREE.MeshStandardMaterial({ color: 0x6b5a48, roughness: 0.9 });
+  const trunk = new THREE.CatmullRomCurve3([V3(0, 0.04, 0), V3(0.03, 0.09, 0.01), V3(-0.02, 0.15, 0), V3(0.02, 0.21, -0.01)]);
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(trunk, 24, 0.012, 8), bark));
+  const br = new THREE.CatmullRomCurve3([V3(-0.01, 0.13, 0), V3(-0.07, 0.15, 0.01), V3(-0.1, 0.17, 0.0)]);
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(br, 16, 0.006, 6), bark));
+  g.add(
+    foliage(
+      r,
+      [
+        { c: V3(0.02, 0.25, -0.01), r: 0.06, n: 60 },
+        { c: V3(-0.1, 0.19, 0.0), r: 0.045, n: 40 },
+        { c: V3(0.08, 0.18, 0.01), r: 0.04, n: 34 },
+      ],
+      0.022,
+      21,
+    ),
+  );
+  return g;
+}
+
+const V3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+
+/* ---------- miniatura de carro de corrida (kit de montar) ---------- */
+
+export function raceCar(m: Mats, livery: THREE.Material, accent: THREE.Material) {
+  const g = new THREE.Group();
+  const L = 0.5; // ao longo de x
+  // corpo: perfil lateral extrudado na largura
+  const side = new THREE.Shape();
+  side.moveTo(-L / 2, 0.035);
+  side.lineTo(-L / 2 + 0.12, 0.04);
+  side.quadraticCurveTo(-0.04, 0.06, 0.0, 0.075);
+  side.lineTo(0.06, 0.085);
+  side.quadraticCurveTo(0.12, 0.1, 0.17, 0.08);
+  side.lineTo(L / 2 - 0.04, 0.06);
+  side.lineTo(L / 2 - 0.04, 0.03);
+  side.lineTo(-L / 2 + 0.02, 0.025);
+  side.lineTo(-L / 2, 0.035);
+  const bodyG = new THREE.ExtrudeGeometry(side, { depth: 0.07, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.008, bevelSegments: 3, curveSegments: 12 });
+  bodyG.translate(0, 0, -0.035);
+  // afina o bico
+  const p = bodyG.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    const k = THREE.MathUtils.smoothstep(x, -L / 2, -0.02);
+    p.setZ(i, p.getZ(i) * (0.35 + 0.65 * k));
+  }
+  bodyG.computeVertexNormals();
+  g.add(new THREE.Mesh(bodyG, livery));
+  // laterais (sidepods)
+  for (const sz of [-1, 1]) {
+    const pod = new THREE.Mesh(rbox(0.16, 0.035, 0.04, 0.012), livery);
+    pod.position.set(0.07, 0.05, sz * 0.06);
+    g.add(pod);
+  }
+  // asa dianteira e traseira
+  const fw = new THREE.Mesh(rbox(0.06, 0.006, 0.2, 0.002), accent);
+  fw.position.set(-L / 2 + 0.02, 0.02, 0);
+  const rw = new THREE.Mesh(rbox(0.05, 0.008, 0.16, 0.002), accent);
+  rw.position.set(L / 2 - 0.03, 0.11, 0);
+  const rw2 = rw.clone();
+  rw2.position.set(L / 2 - 0.045, 0.098, 0);
+  rw2.scale.set(0.8, 1, 1);
+  g.add(fw, rw, rw2);
+  for (const sz of [-1, 1]) {
+    const ep = new THREE.Mesh(rbox(0.07, 0.06, 0.004, 0.002), livery);
+    ep.position.set(L / 2 - 0.035, 0.09, sz * 0.08);
+    const fe = new THREE.Mesh(rbox(0.07, 0.025, 0.004, 0.002), livery);
+    fe.position.set(-L / 2 + 0.025, 0.028, sz * 0.1);
+    g.add(ep, fe);
+  }
+  // halo
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.004, 8, 24, Math.PI), m.steel);
+  halo.rotation.set(-Math.PI / 2, 0, Math.PI / 2);
+  halo.position.set(0.04, 0.1, 0);
+  g.add(halo);
+  // rodas
+  const tire = new THREE.CylinderGeometry(0.038, 0.038, 0.04, 28);
+  tire.rotateX(Math.PI / 2);
+  const rim = new THREE.CylinderGeometry(0.022, 0.022, 0.042, 20);
+  rim.rotateX(Math.PI / 2);
+  for (const [x, z, s] of [
+    [-L / 2 + 0.09, 0.105, 0.9],
+    [-L / 2 + 0.09, -0.105, 0.9],
+    [L / 2 - 0.1, 0.11, 1.1],
+    [L / 2 - 0.1, -0.11, 1.1],
+  ]) {
+    const t = new THREE.Mesh(tire, m.rubber);
+    t.position.set(x, 0.038 * s, z);
+    t.scale.set(s, s, s * 1.1);
+    const rr = new THREE.Mesh(rim, accent);
+    rr.position.copy(t.position);
+    rr.scale.copy(t.scale);
+    g.add(t, rr);
+  }
+  return g;
+}
+
+/* ---------- prateleira flutuante com fita de luz embaixo ---------- */
+
+export function floatShelf(m: Mats, w = 1.7, d = 0.24) {
+  const g = new THREE.Group();
+  const board = new THREE.Mesh(rbox(w, 0.035, d, 0.004), m.matte);
+  board.position.set(0, 0, d / 2);
+  const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.9, 0.78), toneMapped: false });
+  const strip = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.06, 0.01), glowMat);
+  strip.rotation.x = Math.PI / 2;
+  strip.position.set(0, -0.0181, 0.03);
+  strip.userData.noAO = true;
+  g.add(board, strip);
+  return { group: g, glow: glowMat };
+}
+
+/* ---------- painel ripado acústico ---------- */
+
+export function slatPanel(m: Mats, w: number, h: number) {
+  const g = new THREE.Group();
+  const felt = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ color: 0x5b5f68, roughness: 1 }));
+  felt.position.z = 0.002;
+  g.add(felt);
+  const pitch = 0.05;
+  const n = Math.floor(w / pitch);
+  const slats = new THREE.InstancedMesh(rbox(0.028, h, 0.022, 0.003, 2), m.slat, n);
+  const mm = new THREE.Matrix4();
+  for (let i = 0; i < n; i++) {
+    mm.makeTranslation(-w / 2 + pitch / 2 + i * pitch, 0, 0.014);
+    slats.setMatrixAt(i, mm);
+  }
+  g.add(slats);
+  return g;
+}
+
+/* ---------- gabinete branco com vidro e fans acesas ---------- */
+
+export function pcTower(m: Mats, w = 0.24, h = 0.46, d = 0.42) {
+  const g = new THREE.Group();
+  const fanLight: THREE.MeshBasicMaterial[] = [];
+  // estrutura: fundo, topo, base e lado direito sólidos
+  const panel = (pw: number, ph: number, pd: number, x: number, y: number, z: number) => {
+    const b = new THREE.Mesh(rbox(pw, ph, pd, 0.004), m.white);
+    b.position.set(x, y, z);
+    g.add(b);
+  };
+  panel(w, 0.02, d, 0, 0.01 + 0.012, 0);
+  panel(w, 0.02, d, 0, h - 0.01, 0);
+  panel(w, h, 0.012, 0, h / 2, -d / 2 + 0.006);
+  panel(0.012, h, d, w / 2 - 0.006, h / 2, 0);
+  for (const [x, z] of [
+    [-w / 2 + 0.008, d / 2 - 0.008],
+    [w / 2 - 0.008, d / 2 - 0.008],
+    [-w / 2 + 0.008, -d / 2 + 0.008],
+  ]) {
+    const post = new THREE.Mesh(rbox(0.016, h, 0.016, 0.004), m.white);
+    post.position.set(x, h / 2, z);
+    g.add(post);
+  }
+  for (const [x, z] of [
+    [-w / 2 + 0.03, d / 2 - 0.04],
+    [w / 2 - 0.03, d / 2 - 0.04],
+    [-w / 2 + 0.03, -d / 2 + 0.04],
+    [w / 2 - 0.03, -d / 2 + 0.04],
+  ]) {
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.016, 0.012, 16), m.rubber);
+    foot.position.set(x, 0.006, z);
+    g.add(foot);
+  }
+  // por dentro: placa-mãe branca, placa de vídeo, cooler
+  const mb = new THREE.Mesh(rbox(0.01, h * 0.7, d * 0.62, 0.003), m.plastic);
+  mb.position.set(w / 2 - 0.02, h * 0.55, -0.04);
+  const gpu = new THREE.Mesh(rbox(0.16, 0.05, d * 0.7, 0.008), m.white);
+  gpu.position.set(w / 2 - 0.1, h * 0.36, -0.02);
+  const cooler = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 32), m.white);
+  cooler.rotation.z = Math.PI / 2;
+  cooler.position.set(w / 2 - 0.045, h * 0.7, -0.06);
+  g.add(mb, gpu, cooler);
+  const ring = (c: THREE.Color) => {
+    const mt = new THREE.MeshBasicMaterial({ color: c, toneMapped: false });
+    fanLight.push(mt);
+    return mt;
+  };
+  const cool = ring(new THREE.Color(0x8b5cf6).multiplyScalar(2.2));
+  const cr = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.003, 8, 40), cool);
+  cr.rotation.y = Math.PI / 2;
+  cr.position.set(w / 2 - 0.061, h * 0.7, -0.06);
+  g.add(cr);
+  // três fans na frente, atrás do vidro
+  const bladeG = new THREE.CircleGeometry(0.048, 7);
+  for (let i = 0; i < 3; i++) {
+    const fy = 0.09 + i * 0.135;
+    const fz = d / 2 - 0.03;
+    const housing = new THREE.Mesh(rbox(0.12, 0.125, 0.022, 0.01), m.white);
+    housing.position.set(0, fy, fz);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.0035, 8, 48), ring(new THREE.Color(i === 1 ? 0x55d6ff : 0x8b5cf6).multiplyScalar(2.2)));
+    rim.position.set(0, fy, fz + 0.012);
+    const blades = new THREE.Mesh(bladeG, new THREE.MeshStandardMaterial({ color: 0xf2f2f5, roughness: 0.4, transparent: true, opacity: 0.85 }));
+    blades.position.set(0, fy, fz + 0.011);
+    blades.rotation.z = i;
+    g.add(housing, rim, blades);
+  }
+  // vidro temperado na frente e no lado esquerdo
+  const glassM = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.04, transparent: true, opacity: 0.12, clearcoat: 1, depthWrite: false });
+  const gf = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.01, h - 0.03), glassM);
+  gf.position.set(0, h / 2, d / 2 + 0.001);
+  const gs = new THREE.Mesh(new THREE.PlaneGeometry(d - 0.01, h - 0.03), glassM);
+  gs.rotation.y = -Math.PI / 2;
+  gs.position.set(-w / 2 - 0.001, h / 2, 0);
+  gf.userData.noAO = gs.userData.noAO = true;
+  g.add(gf, gs);
+  return { group: g, lights: fanLight };
 }
