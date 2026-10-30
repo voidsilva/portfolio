@@ -167,9 +167,20 @@ function progress() {
 const navLinks = $$<HTMLAnchorElement>('.nav a');
 const navFor = (i: number) => (i >= 2 && i <= 4 ? '#trabalho' : i === 5 ? '#servicos' : i === 6 ? '#processo' : i === 7 ? '#contato' : '');
 let lastSt = -1;
+// relógio do estúdio: 08:10 na abertura, 18:20 no contato
+const clockT = $('.clock__t');
+const clockL = $('.clock__l');
+function setClock(p: number) {
+  const min = Math.round(8 * 60 + 10 + (p / Math.max(1, stEls.length - 1)) * (10 * 60 + 10));
+  const h = Math.floor(min / 60),
+    m = min % 60;
+  clockT.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  clockL.textContent = h < 12 ? 'manhã no estúdio' : h < 16 ? 'tarde no estúdio' : 'fim de tarde no estúdio';
+}
 function onScroll() {
   const p = progress();
   world?.setProgress(p);
+  setClock(p);
   const st = Math.round(p);
   if (st !== lastSt) {
     lastSt = st;
@@ -366,10 +377,23 @@ const sound = (() => {
 const sheet = $('.sheet');
 const sheetBody = $('.sheet__body', sheet);
 let opener: HTMLElement | null = null;
-function openCase(id: string, from: HTMLElement, x: number, y: number) {
+// cada case mora num monitor: a câmera entra na tela antes de abrir a folha
+const MONITOR: Record<string, number> = { belaways: 0, ponto: 1, gastos: 2 };
+let diving = false;
+async function openCase(id: string, from: HTMLElement, x: number, y: number) {
   const c = cases[id];
-  if (!c) return;
+  if (!c || diving) return;
   opener = from;
+  if (world && !reduced && id in MONITOR) {
+    diving = true;
+    lenis?.stop();
+    doc.classList.add('diving');
+    sound.chime(8);
+    await world.dive(MONITOR[id]);
+    x = innerWidth / 2;
+    y = innerHeight / 2;
+    diving = false;
+  }
   sheetBody.innerHTML = c;
   sheet.style.setProperty('--x', `${x}px`);
   sheet.style.setProperty('--y', `${y}px`);
@@ -388,6 +412,10 @@ function closeCase() {
     sheetBody.innerHTML = '';
   };
   reduced ? done() : setTimeout(done, 700);
+  if (doc.classList.contains('diving')) {
+    world?.dive(null).then(() => doc.classList.remove('diving'));
+    setTimeout(() => doc.classList.remove('diving'), 500);
+  }
   lenis?.start();
   document.body.style.overflow = '';
   opener?.focus({ preventScroll: true });
