@@ -5,12 +5,11 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { bake, blobShadow, curlPaper, dustMaterial, type DayUniforms } from './baked';
 import { beamMaterial, boardMaterial, envScene, outside, screenMaterial } from './fx';
 import { paperGeometry } from './models';
 import { contactScreen, loadImage, paperAtlas, processBoard, screenFrom, servicesBoard } from './paper';
-import { artwork, mesh as meshTex, oak, pbrMat, plaster, toTex } from './tex';
+import { artwork, mesh as meshTex, oak, pbrMat, plaster, spillGlow, toTex } from './tex';
 
 /*
   O estúdio. A sala, a mesa e tudo que fica parado foram modelados no Blender por script
@@ -41,7 +40,7 @@ interface Screen {
   mesh: THREE.Mesh;
   w: number;
   h: number;
-  light?: THREE.RectAreaLight;
+  spill?: THREE.MeshBasicMaterial;
 }
 interface Glow {
   mat: THREE.MeshBasicMaterial;
@@ -89,6 +88,8 @@ export class World {
   private smoothPtr = new THREE.Vector2();
   private hasPointer = false;
   private clock = new THREE.Clock();
+  private shadowAt = -1;
+  private scale = 1;
   private time = 0;
   private running = false;
   intro = 0;
@@ -129,7 +130,9 @@ export class World {
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = tier !== 'low';
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // sombra do sol só muda quando a rolagem mexe nas coisas: não redesenha a cada quadro
+    this.renderer.shadowMap.autoUpdate = false;
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.03, 40);
   }
 
@@ -140,12 +143,11 @@ export class World {
     return this.stations.length;
   }
 
-  async init() {
+  async init(onProgress?: (k: number) => void) {
     const r = this.renderer;
     const s = this.scene;
     const high = this.tier === 'high';
     const small = this.tier === 'low' || this.mobile;
-    RectAreaLightUniformsLib.init();
     s.background = new THREE.Color(0xeeeff3);
     const pm = new THREE.PMREMGenerator(r);
     s.environment = pm.fromScene(envScene(), 0.02).texture;
@@ -163,12 +165,23 @@ export class World {
         t.channel = 1;
         return t;
       });
+    // progresso real para a tela de carregamento: o modelo pesa mais, depois os mapas de luz
+    const part = { glb: 0, a: 0, b: 0, rest: 0 };
+    const tell = () => onProgress?.(part.glb * 0.62 + part.a * 0.12 + part.b * 0.12 + part.rest * 0.04);
+    const done = <T,>(k: keyof typeof part) => (v: T) => {
+      part[k] = 1;
+      tell();
+      return v;
+    };
     const [gltf, lmA, lmB, scale, shots] = await Promise.all([
-      loader.loadAsync('/models/estudio.glb'),
-      loadLm(lmUrl('manha')),
-      loadLm(lmUrl('tarde')),
+      loader.loadAsync('/models/estudio.glb', (e) => {
+        if (e.total) part.glb = e.loaded / e.total;
+        tell();
+      }).then(done('glb')),
+      loadLm(lmUrl('manha')).then(done('a')),
+      loadLm(lmUrl('tarde')).then(done('b')),
       fetch('/models/luz.json').then((x) => x.json() as Promise<{ manha: number; tarde: number }>),
-      Promise.all(['/belaways.webp', '/pontofacial.webp', '/gastos.webp'].map(loadImage)),
+      Promise.all(['/belaways.webp', '/pontofacial.webp', '/gastos.webp'].map(loadImage)).then(done('rest')),
     ]);
     this.day.lightMap2.value = lmB;
     this.day.uK2.value = scale.tarde * Math.PI * EXPOSE;
@@ -196,11 +209,12 @@ export class World {
     };
     const floorTex = oak(1024, 1024, 6, 7);
     const wallTex = plaster(512, 3);
-    const upgrade = (src: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial => {
+    const upgrade = (src: THREE.MeshStandardMaterial, cheap = false): THREE.MeshStandardMaterial => {
       const n = src.name;
       if (n === 'oak_floor') return pbrMat(floorTex, r, { repeat: [1 / 1.3, 1 / 1.3], bump: 0.45, color: 0xf6efe6, roughness: 0.55, roughnessMap: null });
       if (n === 'wall') return pbrMat(wallTex, r, { repeat: [1, 1], bump: 0.08, roughness: 0.95, color: 0xffffff });
       if (n === 'art_print') return new THREE.MeshStandardMaterial({ map: uvTex(artwork()), roughness: 0.85 });
+      if (cheap) return new THREE.MeshStandardMaterial({ name: n, color: src.color, roughness: src.roughness, metalness: src.metalness, side: n.startsWith('leaf') ? THREE.DoubleSide : THREE.FrontSide });
       const p = new THREE.MeshPhysicalMaterial({ name: n, color: src.color, roughness: src.roughness, metalness: src.metalness });
       if (glossy.has(n)) {
         p.clearcoat = n === 'white_gloss' || n === 'ceramic' ? 0.35 : 0.8;
@@ -219,7 +233,7 @@ export class World {
     fixed.traverse((o) => {
       const mm = o as THREE.Mesh;
       if (!mm.isMesh) return;
-      mm.material = bake(upgrade(mm.material as THREE.MeshStandardMaterial), lmA, kA, this.day);
+      mm.material = bake(upgrade(mm.material as THREE.MeshStandardMaterial, true), lmA, kA, this.day);
       mm.castShadow = true;
     });
     // o que se mexe: luz em tempo real, materiais compartilhados por nome
@@ -266,28 +280,33 @@ export class World {
     /* ---------- telas ---------- */
     const MW = 0.6,
       MH = 0.3375;
-    // a luz de área ilumina para -z local; a tela olha para +z
-    const screenLight = (m: THREE.Mesh, color: number, w: number, h: number) => {
-      const l = new THREE.RectAreaLight(color, 0, w, h);
-      l.position.z = 0.01;
-      l.rotation.y = Math.PI;
-      m.add(l);
-      return l;
+    // a tela acesa ilumina a mesa: um brilho somado no tampo, sem luz de área (cara em cada pixel)
+    root.updateMatrixWorld(true);
+    const spillTex = toTex(spillGlow(), r, false, [1, 1]);
+    const screenLight = (m: THREE.Object3D, color: number, w: number, d: number, off = d * 0.42) => {
+      const mat = new THREE.MeshBasicMaterial({ map: spillTex, color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 });
+      const g = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+      const at = m.getWorldPosition(new THREE.Vector3());
+      const fwd = m.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
+      g.position.set(at.x + fwd.x * off, DESK_TOP + 0.004, at.z + fwd.z * off);
+      g.rotation.set(-Math.PI / 2, 0, Math.atan2(fwd.x, fwd.z));
+      g.renderOrder = 3;
+      s.add(g);
+      return mat;
     };
     for (let i = 0; i < 3; i++) {
       const mat = screenMaterial(uvTex(screenFrom(shots[i])), [26, 15]);
       const m = meshOf(`screen_${i}`);
       m.material = mat;
       // a tela acesa ilumina a mesa e o teclado
-      const lit = high || (this.tier === 'mid' && i === 1);
-      this.screens.push({ mat, mesh: m, w: MW, h: MH, light: lit ? screenLight(m, 0x9fb4ff, MW, MH) : undefined });
+      this.screens.push({ mat, mesh: m, w: MW, h: MH, spill: screenLight(m, 0x6f86ff, MW * 1.5, 0.62) });
     }
     const lapMat = screenMaterial(uvTex(contactScreen()), [20, 13]);
     const lapScreen = meshOf('laptop_screen');
     lapScreen.material = lapMat;
     this.lap = {
       lid: node('laptop_lid'),
-      screen: { mat: lapMat, mesh: lapScreen, w: 0.29, h: 0.185, light: small ? undefined : screenLight(lapScreen, 0xfff4ea, 0.29, 0.185) },
+      screen: { mat: lapMat, mesh: lapScreen, w: 0.29, h: 0.185, spill: screenLight(node('laptop'), 0xffe6cc, 0.6, 0.5, 0.05) },
     };
 
     /* ---------- quadro de serviços e o pincel que escreve ---------- */
@@ -313,7 +332,7 @@ export class World {
     bulb.position.y = -0.095;
     const spot = new THREE.SpotLight(0xffd9a8, 4.5, 2.2, 0.62, 0.65, 1.6);
     spot.position.y = -0.08;
-    spot.castShadow = high;
+    spot.castShadow = false;
     spot.shadow.mapSize.set(512, 512);
     spot.shadow.bias = -0.0008;
     const tgt = new THREE.Object3D();
@@ -343,7 +362,7 @@ export class World {
     s.add(this.hemi);
     const sun = new THREE.DirectionalLight(0xffffff, 2.4);
     sun.castShadow = !small;
-    sun.shadow.mapSize.set(high ? 2048 : 1024, high ? 2048 : 1024);
+    sun.shadow.mapSize.set(1024, 1024);
     Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 1, far: 30 });
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.02;
@@ -478,17 +497,30 @@ export class World {
 
     this.makePost();
     this.setSize();
-    r.compile(s, this.camera);
+    // compila os shaders em paralelo (sem congelar a página) e já sobe as texturas para a placa
+    if (r.extensions.has('KHR_parallel_shader_compile')) await r.compileAsync(s, this.camera);
+    else r.compile(s, this.camera);
+    s.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (!m || Array.isArray(m)) return;
+      for (const t of [m.map, m.lightMap, m.bumpMap, m.roughnessMap, m.alphaMap]) if (t) r.initTexture(t);
+    });
+    r.initTexture(lmB);
+    onProgress?.(0.97);
   }
 
   private makePost() {
     if (this.tier === 'low') return;
     const r = this.renderer;
-    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: (devicePixelRatio || 1) > 1.2 ? 0 : 2 });
     const c = new EffectComposer(r, rt);
     c.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.28, 0.55, 1.2);
-    c.addPass(this.bloom);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.28, 0.55, 1.2);
+    // brilho calculado em meia resolução: igual a olho, quatro vezes menos pixels
+    const fit = bloom.setSize.bind(bloom);
+    bloom.setSize = (w: number, h: number) => fit(Math.max(1, w >> 1), Math.max(1, h >> 1));
+    this.bloom = bloom;
+    c.addPass(bloom);
     c.addPass(new OutputPass());
     this.composer = c;
   }
@@ -496,8 +528,10 @@ export class World {
   setSize() {
     const w = innerWidth,
       h = innerHeight;
-    const cap = this.tier === 'high' ? 1.75 : this.tier === 'mid' ? 1.35 : 1;
-    const dpr = Math.min(devicePixelRatio || 1, cap);
+    const cap = this.tier === 'high' ? 1.5 : this.tier === 'mid' ? 1.25 : 1;
+    // telas grandes (2K/4K) não precisam de tanta densidade: limita os pixels totais
+    const budget = Math.sqrt((2560 * 1440) / (w * h));
+    const dpr = Math.max(0.6, Math.min(devicePixelRatio || 1, cap, budget) * this.scale);
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
@@ -554,7 +588,13 @@ export class World {
     if (this.running) return;
     this.running = true;
     this.clock.start();
-    this.renderer.setAnimationLoop(() => this.frame());
+    // monitores de 120/144 Hz: desenha no máximo ~60 quadros por segundo, metade do trabalho e mesma fluidez
+    let last = 0;
+    this.renderer.setAnimationLoop((t) => {
+      if (t - last < 1000 / 62) return;
+      last = t;
+      this.frame();
+    });
   }
   stop() {
     this.running = false;
@@ -680,7 +720,7 @@ export class World {
       const on = ss(1.45 + i * 0.12, 1.95 + i * 0.12, sP);
       sc.mat.uniforms.uOn.value = on;
       sc.mat.uniforms.uTime.value = this.time;
-      if (sc.light) sc.light.intensity = on * 2.2 * (1 - this.diveK * 0.6);
+      if (sc.spill) sc.spill.opacity = on * 0.32 * (1 - this.diveK * 0.6);
     });
     for (const gl of this.glows) gl.mat.color.copy(gl.base).multiplyScalar(0.03 + 0.97 * ss(gl.at, gl.at + 0.4, sP));
     // fans do gabinete aceleram com a máquina ligando
@@ -731,13 +771,18 @@ export class World {
     const lon = ss(6.65, 7, sP);
     this.lap.screen.mat.uniforms.uOn.value = lon;
     this.lap.screen.mat.uniforms.uTime.value = this.time;
-    if (this.lap.screen.light) this.lap.screen.light.intensity = lon * 1.6;
+    if (this.lap.screen.spill) this.lap.screen.spill.opacity = lon * 0.35;
 
     // luminária olha para onde o cursor aponta na mesa
     this.aimLamp(dt);
 
     (this.beam.material as THREE.ShaderMaterial).uniforms.uTime.value = this.time;
     if (this.dust) (this.dust.material as THREE.ShaderMaterial).uniforms.uTime.value = this.time;
+    // sombra só é refeita quando a rolagem mexeu na cena
+    if (this.still || Math.abs(sP - this.shadowAt) > 2e-4) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.shadowAt = sP;
+    }
     if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, cam);
   }
@@ -814,10 +859,14 @@ export class World {
     if (this.frames.length < 90) return;
     const avg = this.frames.reduce((a, b) => a + b, 0) / this.frames.length;
     this.frames.length = 0;
+    if (avg > 1 / 50 && this.scale > 0.7) {
+      // primeiro baixa a resolução (sem recompilar nada); só depois corta efeitos
+      this.scale -= 0.15;
+      this.setSize();
+      return;
+    }
     if (avg > 1 / 42) {
       this.tier = this.tier === 'high' ? 'mid' : 'low';
-      this.lamp.spot.castShadow = false;
-      this.screens.forEach((sc, i) => sc.light && (sc.light.visible = i === 1 && this.tier === 'mid'));
       if (this.dust) this.dust.visible = this.tier === 'mid';
       if (this.tier === 'low') {
         if (this.bloom) this.bloom.enabled = false;

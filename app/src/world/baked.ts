@@ -21,8 +21,11 @@ const MAPS = THREE.ShaderChunk.lights_fragment_maps.replace(
   'vec3 lightMapIrradiance = lightMapTexel.rgb * lightMapIntensity;',
   'vec3 lightMapIrradiance = mix( lightMapTexel.rgb * lightMapIntensity, texture2D( lightMap2, vLightMapUv ).rgb * uK2, uDay );',
 ).replace('iblIrradiance += getIBLIrradiance( geometryNormal );', '');
+// superfícies foscas não mostram reflexo do ambiente: corta a amostragem mais cara do shader
+const MAPS_MATTE = MAPS.replace(/radiance \+= getIBLRadiance\([^;]*;/, '').replace(/clearcoatRadiance \+= getIBLRadiance\([^;]*;/, '');
 
 export function bake(m: THREE.MeshStandardMaterial, lm: THREE.Texture, k: number, day: DayUniforms) {
+  const matte = m.roughness > 0.6;
   m.lightMap = lm;
   m.lightMapIntensity = k;
   m.onBeforeCompile = (sh) => {
@@ -30,9 +33,9 @@ export function bake(m: THREE.MeshStandardMaterial, lm: THREE.Texture, k: number
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <lightmap_pars_fragment>', '#include <lightmap_pars_fragment>\nuniform sampler2D lightMap2; uniform float uDay; uniform float uK2;')
       .replace('#include <lights_fragment_begin>', BEGIN)
-      .replace('#include <lights_fragment_maps>', MAPS);
+      .replace('#include <lights_fragment_maps>', matte ? MAPS_MATTE : MAPS);
   };
-  m.customProgramCacheKey = () => 'baked';
+  m.customProgramCacheKey = () => (matte ? 'baked-matte' : 'baked');
   return m;
 }
 
