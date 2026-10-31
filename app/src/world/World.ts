@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { beamMaterial, boardMaterial, envScene, outside, screenMaterial } from './fx';
-import { bonsai, chair, deskLamp, desk, deskMat, deskPlant, floatShelf, framedArt, keyboard, laptop, lightBar, makeMats, monitor, mouse, mug, paperGeometry, pcTower, plant, raceCar, rbox, shelves, slab, slatPanel } from './models';
+import { chair, deskLamp, desk, framedArt, keyboard, laptop, makeMats, monitor, mouse, mug, paperGeometry, plant, rbox, shelves, slab } from './models';
 import { contactScreen, loadImage, paperAtlas, processBoard, screenFrom, servicesBoard } from './paper';
 import { artwork, oak, pbrMat, plaster, toTex, wool } from './tex';
 
@@ -87,8 +87,6 @@ export class World {
   private marker!: THREE.Object3D;
   private cards: { mesh: THREE.Object3D; rest: THREE.Matrix4; pin: THREE.Object3D }[] = [];
   private lamp!: ReturnType<typeof deskLamp>;
-  private chair!: THREE.Object3D;
-  private glows: { mat: THREE.MeshBasicMaterial; base: THREE.Color; at: number }[] = [];
   private deskTop = 0.74;
   private deskZ = -2.15;
   private diveTo = -1;
@@ -284,104 +282,55 @@ export class World {
 
     /* ---------- mesa ---------- */
     const topMat = pbrMat(oak(1024, 512, 3, 21), r, { bump: 0.12, color: 0xfaf4ec, roughnessMap: null, roughness: 0.62 });
-    const dk = desk(m);
+    const dk = desk(m, topMat);
     dk.group.position.z = this.deskZ;
     shadow(dk.group);
     const top = (this.deskTop = dk.top);
     const dz = this.deskZ;
-    // luz que acende quando a história pede: guarda a cor cheia e começa apagada
-    const glow = (mat: THREE.MeshBasicMaterial, at: number) => {
-      this.glows.push({ mat, base: mat.color.clone(), at });
-      mat.color.setScalar(0.04);
-    };
 
-    /* ---------- três monitores curvos em arco ---------- */
+    /* ---------- monitores ---------- */
     const shots = await Promise.all(['/belaways.webp', '/pontofacial.webp', '/gastos.webp'].map(loadImage));
     const MW = 0.6,
       MH = 0.3375;
-    const monPos: [number, number, number][] = [
-      [-0.63, 0.42, 0.13],
-      [0, 0, 0],
-      [0.63, -0.42, 0.13],
+    const monPos: [number, number][] = [
+      [-0.67, 0.3],
+      [0, 0],
+      [0.67, -0.3],
     ];
-    monPos.forEach(([x, ry, fz], i) => {
+    monPos.forEach(([x, ry], i) => {
       const mat = screenMaterial(toTex(screenFrom(shots[i]), r), [26, 15]);
       const mo = monitor(m, mat, MW, MH);
-      mo.group.position.set(x, top, dz - 0.12 + fz);
+      mo.group.position.set(x, top, dz - 0.14 + Math.abs(ry) * 0.24);
       mo.group.rotation.y = ry;
-      if (i === 1) {
-        const lb = lightBar(m, 0.46);
-        lb.group.position.set(0, mo.height + 0.012, -0.03);
-        mo.group.add(lb.group);
-        glow(lb.glow, 1.4);
-      }
       shadow(mo.group);
       mo.screen.castShadow = false;
       this.screens.push({ mat, mesh: mo.screen, w: MW, h: MH });
     });
 
     /* ---------- sobre a mesa ---------- */
-    const pad = deskMat(m, 1.05, 0.38);
-    pad.position.set(0, top + 0.0015, dz + 0.2);
-    shadow(pad, false);
     const kb = keyboard(m);
-    kb.position.set(-0.08, top + 0.003, dz + 0.2);
+    kb.position.set(-0.02, top, dz + 0.2);
     shadow(kb);
     const ms = mouse(m);
-    ms.position.set(0.3, top + 0.003, dz + 0.23);
+    ms.position.set(0.3, top, dz + 0.23);
     ms.rotation.y = -0.1;
     shadow(ms);
     const cup = mug(m);
-    cup.position.set(-0.88, top, dz + 0.2);
+    cup.position.set(-0.92, top, dz + 0.16);
     cup.rotation.y = 2.3;
     shadow(cup);
     const lapMat = screenMaterial(toTex(contactScreen(), r), [20, 13]);
     const lp = laptop(m, lapMat);
-    lp.group.position.set(0.82, top, dz + 0.22);
-    lp.group.rotation.y = -0.38;
+    lp.group.position.set(1.0, top, dz + 0.2);
+    lp.group.rotation.y = -0.42;
     shadow(lp.group);
     this.lap = { lid: lp.lid, screen: { mat: lapMat, mesh: lp.screen, w: 0.29, h: 0.185 } };
     this.lamp = deskLamp(m);
-    this.lamp.group.position.set(-1.2, top, dz - 0.22);
+    this.lamp.group.position.set(-1.13, top, dz - 0.24);
     this.lamp.spot.castShadow = high;
     this.lamp.spot.shadow.mapSize.set(512, 512);
     this.lamp.spot.shadow.bias = -0.0008;
     shadow(this.lamp.group);
-    const pc = pcTower(m);
-    pc.group.position.set(1.2, top, dz - 0.1);
-    shadow(pc.group);
-    pc.lights.forEach((l) => glow(l, 1.3));
-    const p1 = deskPlant(m, r, 3);
-    p1.position.set(-0.98, top, dz - 0.2);
-    shadow(p1);
-    const p2 = deskPlant(m, r, 8);
-    p2.position.set(0.98, top, dz - 0.26);
-    p2.scale.setScalar(0.85);
-    shadow(p2);
-
-    /* ---------- prateleira flutuante: miniaturas e bonsai ---------- */
-    const fs = floatShelf(m, 1.8, 0.24);
-    fs.group.position.set(0, 2.26, back);
-    shadow(fs.group);
-    const shelfY = 2.26 + 0.0175;
-    const livA = new THREE.MeshPhysicalMaterial({ color: 0x1c1e24, roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.1 });
-    const livB = new THREE.MeshPhysicalMaterial({ color: 0xf2f3f6, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 });
-    const cyan = new THREE.MeshPhysicalMaterial({ color: 0x55d6ff, roughness: 0.3, clearcoat: 0.8 });
-    const carA = raceCar(m, livA, m.purple);
-    carA.position.set(-0.52, shelfY, back + 0.12);
-    carA.rotation.y = 0.25;
-    const carB = raceCar(m, livB, cyan);
-    carB.position.set(0.55, shelfY, back + 0.12);
-    carB.rotation.y = Math.PI - 0.25;
-    const bz = bonsai(m, r);
-    bz.position.set(0.02, shelfY, back + 0.12);
-    shadow(carA);
-    shadow(carB);
-    shadow(bz);
-    const shelfLight = new THREE.RectAreaLight(0xffe6c8, 1.2, 1.7, 0.05);
-    shelfLight.position.set(0, 2.24, back + 0.04);
-    shelfLight.lookAt(0, 0, back + 0.04);
-    s.add(shelfLight);
 
     /* ---------- a papelada ---------- */
     const atlas = toTex(paperAtlas(this.tier === 'low' ? 1024 : 2048), r);
@@ -424,21 +373,17 @@ export class World {
 
     /* ---------- cadeira, planta, estante, quadro de arte ---------- */
     const ch = chair(m, r);
-    ch.position.set(0.45, 0, dz + 0.8);
-    ch.rotation.y = -0.15;
+    ch.position.set(0.5, 0, dz + 1.0);
+    ch.rotation.y = -0.55;
     shadow(ch);
-    this.chair = ch;
     const pt = plant(m, r);
     pt.position.set(-3.25, 0, back + 0.55);
     shadow(pt);
     const sh = shelves(m, topMat, r);
     sh.position.set(2.55, 0, back + 0.14);
     shadow(sh);
-    const slat = slatPanel(m, 2.1, H);
-    slat.position.set(-2.6, H / 2, back);
-    shadow(slat);
     const art = framedArt(topMat, toTex(artwork(), r), 0.62, 0.82);
-    art.position.set(-2.35, 1.55, back + 0.04);
+    art.position.set(-2.05, 1.55, back + 0.016);
     shadow(art);
 
     /* ---------- quadro de serviços (parede direita) ---------- */
@@ -494,7 +439,7 @@ export class World {
       const pin = new THREE.Mesh(new THREE.SphereGeometry(0.012, 16, 12), i % 2 ? m.purple : m.steel);
       pin.position.set(0, chh / 2 - 0.03, 0.01);
       card.add(paperB, face2, pin);
-      const rest = new THREE.Matrix4().compose(new THREE.Vector3(-0.84 + i * 0.56, 1.78, back + 0.008), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, (i % 2 ? 1 : -1) * 0.012)), new THREE.Vector3(1, 1, 1));
+      const rest = new THREE.Matrix4().compose(new THREE.Vector3(-0.84 + i * 0.56, 1.98, back + 0.008), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, (i % 2 ? 1 : -1) * 0.012)), new THREE.Vector3(1, 1, 1));
       card.matrixAutoUpdate = false;
       card.matrix.copy(rest);
       shadow(card);
@@ -522,8 +467,8 @@ export class World {
       S(m1.cam, m1.look, Lf),
       S(m2.cam, m2.look, Rt),
       S(V(1.05, 1.5, -0.25), V(W / 2, 1.5, -0.25), Rt),
-      S(V(0, 1.7, mob ? 0.2 : -0.75), V(0, 1.78, back), mob ? [0, 0.2] : [0, 0.06]),
-      S(V(1.42, 1.08, -1.36), V(0.82, top + 0.1, dz + 0.18), mob ? Lf : [0.24, 0]),
+      S(V(0, 1.86, mob ? 0.2 : -0.75), V(0, 1.96, back), mob ? [0, 0.2] : [0, 0.06]),
+      S(V(1.62, 1.08, -1.38), V(1.0, top + 0.1, dz + 0.16), mob ? Lf : [0.24, 0]),
     ];
     this.camCurve = new THREE.CatmullRomCurve3(this.stations.map((st) => st.cam), false, 'centripetal');
     this.lookCurve = new THREE.CatmullRomCurve3(this.stations.map((st) => st.look), false, 'centripetal');
@@ -730,16 +675,6 @@ export class World {
       sc.mat.uniforms.uOn.value = ss(1.45 + i * 0.12, 1.95 + i * 0.12, sP);
       sc.mat.uniforms.uTime.value = this.time;
     });
-
-    // a cadeira rola para trás e gira, abrindo lugar para quem chega
-    {
-      const k = easeInOut(ss(0.1, 0.95, sP));
-      this.chair.position.set(0.45 - k * 1.55, 0, this.deskZ + 0.8 + k * 1.2);
-      this.chair.rotation.y = -0.15 + k * 0.9;
-    }
-
-    // barra de luz e fans acendem com as telas
-    for (const gl of this.glows) gl.mat.color.copy(gl.base).multiplyScalar(0.04 + 0.96 * ss(gl.at, gl.at + 0.4, sP));
 
     // quadro: escrito enquanto a câmera chega
     const rv = ss(4.15, 4.95, sP);
