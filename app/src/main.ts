@@ -469,8 +469,7 @@ function pickTier(): Tier | null {
   if (weak || /intel|mali|adreno [1-5]/.test(name)) return 'mid';
   return 'high';
 }
-/** Carrega a cena inteira (modelo, luz, shaders) enquanto a tela de carregamento está na frente. */
-async function load3d(onProgress: (k: number) => void) {
+async function boot3d() {
   if (world || lite) return;
   const tier = pickTier();
   if (!tier) {
@@ -482,21 +481,12 @@ async function load3d(onProgress: (k: number) => void) {
   const canvas = $<HTMLCanvasElement>('.stage__gl');
   try {
     const w = new World(canvas, tier, { still: reduced || /[?&]still\b/.test(location.search) });
-    await w.init(onProgress);
-    // um quadro de aquecimento: sobe o resto para a placa antes de a pessoa ver
-    w.setProgress(progress());
-    w.setIntro(1);
-    w.frame();
+    await w.init();
     world = w;
-    onProgress(1);
   } catch (err) {
     console.warn('3D desligado:', err);
+    return;
   }
-}
-let shown3d = false;
-function show3d() {
-  if (!world || shown3d) return;
-  shown3d = true;
   world.setProgress(progress());
   world.setIntro(1);
   world.start();
@@ -516,8 +506,18 @@ function show3d() {
   }, { passive: true });
   document.addEventListener('pointerleave', () => world!.clearPointer());
 }
+function armBoot() {
+  if (lite) return;
+  const evs = ['pointerdown', 'pointermove', 'wheel', 'touchstart', 'keydown', 'scroll'] as const;
+  const fire = () => {
+    evs.forEach((e) => removeEventListener(e, fire));
+    boot3d();
+  };
+  evs.forEach((e) => addEventListener(e, fire, { passive: true, once: true }));
+  setTimeout(fire, 3500);
+}
+
 /* ---------- abertura ---------- */
-// tela de carregamento: o número acompanha o download de verdade e só sai quando a cena está pronta
 function preload() {
   const pre = $('.pre');
   const word = $('.pre__word', pre);
@@ -525,32 +525,19 @@ function preload() {
   const lb = $('[data-lite-enter]', pre);
   lb.tabIndex = 0;
   pre.removeAttribute('aria-hidden');
-  let real = 0;
-  let ready = false;
-  const loading = load3d((k) => (real = Math.max(real, k))).finally(() => (ready = true));
-  // sem 3D (modo leve, sem WebGL) a abertura é só a animação curta de antes
-  const quick = lite || reduced || doc.classList.contains('seen');
+  if (doc.classList.contains('seen') || reduced) return Promise.resolve();
   return new Promise<void>((res) => {
     const t0 = performance.now();
-    const D = quick ? 0 : 1500;
-    let shownK = 0;
+    const D = 1500;
     const step = () => {
-      const now = performance.now() - t0;
-      const anim = D ? Math.min(1, now / D) : 1;
-      // anda sozinho até 30% e depois segue o carregamento real; desiste de esperar aos 20 s
-      const goal = ready || now > 20000 ? 1 : Math.min(anim, Math.max(Math.min(anim, 0.3), real));
-      shownK += (goal - shownK) * (reduced ? 1 : 0.12);
-      if (goal === 1 && shownK > 0.995) shownK = 1;
-      const e = 1 - Math.pow(1 - shownK, 3);
+      const k = Math.min(1, (performance.now() - t0) / D);
+      const e = 1 - Math.pow(1 - k, 3);
       word.style.setProperty('--b', String(1 - e));
-      num.textContent = String(Math.min(100, Math.round(shownK * 100))).padStart(2, '0');
-      pre.style.setProperty('--k', shownK.toFixed(3));
-      if (shownK < 1 || anim < 1) requestAnimationFrame(step);
+      num.textContent = String(Math.round(e * 100)).padStart(2, '0');
+      if (k < 1) requestAnimationFrame(step);
       else setTimeout(res, 260);
     };
     requestAnimationFrame(step);
-    // quando o carregamento passa do limite, a página abre e a cena entra depois, sozinha
-    loading.then(() => doc.classList.contains('done') && show3d());
   });
 }
 
@@ -562,12 +549,11 @@ async function start() {
   await preload();
   doc.classList.add('done', 'ready');
   $('.pre').setAttribute('aria-hidden', 'true');
-  $('[data-lite-enter]', $('.pre')).tabIndex = -1;
   try {
     sessionStorage.setItem('sd-seen', '1');
   } catch {}
   observeReveals();
-  show3d();
+  armBoot();
 }
 start();
 

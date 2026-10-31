@@ -267,18 +267,6 @@ export function keyLegends(cols: string[][], w = 1024, h = 320) {
   return c;
 }
 
-/** Mancha de luz suave (tela acesa sobre a mesa), mais forte perto da tela. */
-export function spillGlow(w = 128) {
-  const { c, x } = canvas(w);
-  const g = x.createRadialGradient(w / 2, 0, 0, w / 2, 0, w);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.35, 'rgba(255,255,255,0.45)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  x.fillStyle = g;
-  x.fillRect(0, 0, w, w);
-  return c;
-}
-
 export function toTex(c: HTMLCanvasElement, r: THREE.WebGLRenderer, srgb = true, repeat?: [number, number]) {
   const t = new THREE.CanvasTexture(c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;

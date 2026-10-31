@@ -76,10 +76,9 @@ export function boardMaterial(map: THREE.Texture, cols: number, rows: number, bg
       ${HASH}
       void main(){
         vec2 g = vec2(uCols, uRows);
-        // UV do glTF: v = 0 no topo, então a leitura já começa em cima à esquerda
-        vec2 c = floor(vUv * g);
+        vec2 c = floor(vec2(vUv.x, 1.0 - vUv.y) * g);
         float idx = c.y * uCols + c.x;
-        vec2 l = fract(vUv * g);
+        vec2 l = fract(vec2(vUv.x, 1.0 - vUv.y) * g);
         float p = clamp(uReveal * uCols * uRows - idx, 0.0, 1.0);
         // varredura com borda irregular, como traço de caneta
         float wob = (hash(vec2(floor(l.y * 40.0), idx)) - 0.5) * 0.04;
