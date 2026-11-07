@@ -89,11 +89,14 @@ uniform vec2 uBevel;
 uniform vec4 uBox;     // caixa do atlas das palavras (px CSS)
 uniform float uTexel;  // px CSS por texel do atlas
 uniform vec2 uWordOff;
+uniform vec3 uZoom;    // câmera: foco (px) e escala da palavra (mergulho através do vidro)
+uniform float uWall;   // a parede, lá atrás, cresce bem menos (profundidade)
 uniform float uWordOn;
 uniform vec3 uDrops[5];
 uniform float uDropMix;
 uniform float uDropR;
 uniform float uScroll;
+uniform float uPanX;   // a parede desliza devagar quando a câmera anda de lado (profundidade)
 uniform float uPosterLod;
 
 const float HG = 46.;  // distância entre o vidro e a parede
@@ -107,6 +110,7 @@ float smax(float a, float b, float k) {
 vec2 wordD(vec2 p) {
   p.x += sin(p.y * .017 + uTime * 5.) * uVel * 14.;
   p.y += sin(p.x * .011 + uTime * 3.7) * uVel * 8.;
+  p = uZoom.xy + (p - uZoom.xy) / uZoom.z;
   vec2 s = (p - uBox.xy - uWordOff) / uBox.zw;
   if (s.x < 0. || s.x > 1. || s.y < 0. || s.y > 1.) return vec2(-500.);
   vec2 d = textureLod(uSdf, vec2(s.x, (s.y + uSlotA) / uSlots), 0.).rg;
@@ -116,7 +120,7 @@ vec2 wordD(vec2 p) {
     // derretendo: as letras incham e se fundem numa massa líquida antes de virar a palavra nova
     d += sin(3.14159 * uMorph) * (18. + (vnoise(p * .009 + vec2(0., uTime * .6)) - .5) * 24.);
   }
-  return d - (1. - uWordOn) * 140.;
+  return (d - (1. - uWordOn) * 140.) * uZoom.z;
 }
 vec2 dropsD(vec2 p) {
   float d = -500.;
@@ -139,6 +143,7 @@ float blob(vec2 p, vec2 c, float r) {
 // a parede: aurora em movimento + linhas de tipografia gigante (parallax com a rolagem)
 vec3 albedo(vec2 p) {
   float asp = uView.x / uView.y;
+  p = uZoom.xy + (p - uZoom.xy) / uWall;
   vec2 u = p / uView.y;
   float t = uTime * .045;
   vec2 w = u + .1 * vec2(vnoise(u * 1.3 + t), vnoise(u * 1.3 - t + 9.)) - .05;
@@ -153,7 +158,7 @@ vec3 albedo(vec2 p) {
   float v = (p.y + uScroll * .2) / tileH;
   float row = floor(fract(v) * 4.);
   float dir = mod(row, 2.) < .5 ? 1. : -1.;
-  float uu = p.x / (tileH * 2.) + dir * uTime * (.010 + row * .0025);
+  float uu = (p.x + uPanX) / (tileH * 2.) + dir * uTime * (.010 + row * .0025);
   float txt = textureLod(uPoster, vec2(uu, v), uPosterLod).r;
   col = mix(col, mix(vec3(.2, .16, .36), vec3(.9, .88, 1.), uDark), txt * mix(.066, .062, uDark));
   return col;
@@ -172,13 +177,15 @@ vec3 spectrum(float t) {
 void main() {
   vec2 p = vec2(vUv.x, 1. - vUv.y) * uView;
   float px = uView.x / uRes.x;
-  float R = mix(mix(uBevel.x, uBevel.y, uMorph), uDropR, uDropMix);
+  float R = mix(mix(uBevel.x, uBevel.y, uMorph) * uZoom.z, uDropR, uDropMix);
   float d = glassD(p).x;
   float spot = spotOf(p);
 
   // ---- parede, com a sombra e a cáustica do vidro na direção oposta à luz ----
   vec3 alb = albedo(p);
-  vec2 q = mix(p, uLight.xy, HG / uLight.z);
+  // a palavra encolhida (câmera recuando) fica mais perto da parede: sombra e cáustica encolhem junto
+  float hg = HG * min(uZoom.z, 1.);
+  vec2 q = mix(p, uLight.xy, hg / uLight.z);
   float dq = glassD(q).x;
   float pen = 3. + length(p - uLight.xy) * .025;
   float foot = smoothstep(-pen, pen, dq);
@@ -197,7 +204,7 @@ void main() {
 
   // ---- vidro ----
   if (d > -2. * px) {
-    float e = mix(max(1., uTexel), 1., uDropMix);
+    float e = mix(max(1., uTexel * uZoom.z), 1., uDropMix);
     float dx = glassD(p + vec2(e, 0.)).y - glassD(p - vec2(e, 0.)).y;
     float dy = glassD(p + vec2(0., e)).y - glassD(p - vec2(0., e)).y;
     vec2 g = normalize(vec2(dx, dy) + 1e-5);
@@ -205,7 +212,7 @@ void main() {
     vec3 n = vec3(-g * s, sqrt(1. - s * s));
     n.xy += ripG(p) * .3 + vec2(sin(p.y * .02 + uTime * 6.), cos(p.x * .017 + uTime * 5.)) * uVel * .06;
     n = normalize(n);
-    float thick = TB + R * sqrt(max(1. - s * s, 0.));
+    float thick = TB + min(R, 110.) * sqrt(max(1. - s * s, 0.));
     vec3 I = vec3(0., 0., -1.);
     vec3 acc = vec3(0.);
     vec3 ws = vec3(0.);
@@ -216,7 +223,7 @@ void main() {
       vec2 off = t1.xy / max(-t1.z, .2) * thick;
       vec3 t2 = refract(t1, vec3(0., 0., 1.), ior);
       if (dot(t2, t2) < .01) t2 = vec3(t1.xy, -abs(t1.z));
-      off += t2.xy / max(-t2.z, .2) * HG;
+      off += t2.xy / max(-t2.z, .2) * hg;
       vec2 sp = p + off;
       vec3 w = spectrum(f);
       acc += albedo(sp) * lighting(spotOf(sp)) * w;
@@ -245,7 +252,7 @@ precision highp sampler2DArray;
 uniform sampler2D uScene;
 uniform sampler2DArray uImgs;
 uniform vec4 uRect[16];
-uniform vec4 uRectP[16];   // raio, aparecer (0..1), hover (0..1), tipo (0 folha, 1 pílula, 2+ imagem)
+uniform vec4 uRectP[16];   // raio, aparecer (0..1), onda da borda (folha) ou hover (resto), tipo (0 folha, 1 pílula/cartão, 2+ imagem)
 uniform int uRectN;
 uniform vec4 uLens;        // x, y, raio, quanto
 uniform int uLensI;
@@ -261,9 +268,9 @@ float panelD(vec2 p, int i) {
   vec4 P = uRectP[i];
   vec2 q = p;
   if (P.w < .5) {
-    // a borda da folha é líquida: ondula com a velocidade da rolagem
-    float wt = (1. - smoothstep(0., 200., p.y - r.y)) - (1. - smoothstep(0., 200., r.y + r.w - p.y));
-    q.y -= (sin(p.x * .010 + uTime * 4.2) + .5 * sin(p.x * .023 - uTime * 3.1)) * uVel * 14. * wt;
+    // a borda da folha é líquida: ondula com a rolagem (P.z > 0 só as bordas, P.z < 0 a folha inteira vira uma fita)
+    float wt = P.z < 0. ? 1. : (1. - smoothstep(0., 200., p.y - r.y)) - (1. - smoothstep(0., 200., r.y + r.w - p.y));
+    q.y -= (sin(p.x * .010 + uTime * 4.2) + .5 * sin(p.x * .023 - uTime * 3.1)) * (uVel * 14. + abs(P.z) * 38.) * wt;
   }
   float d = rrect(q, r, min(P.x, min(r.z, r.w) * .5));
   if (P.y < .999) {
@@ -301,7 +308,7 @@ vec3 shade(vec2 p, int i, float d, float px, int un) {
   vec3 H = normalize(Ld + vec3(0., 0., 1.));
   float nh = max(dot(n, H), 0.);
   float bev = smoothstep(.08, .6, s);
-  float spec = (pow(nh, 1100.) * 4. * bev + pow(nh, 70.) * .3 * bev + pow(nh, 14.) * mix(.035, .02, uDark)) * uLightOn * (1. + P.z);
+  float spec = (pow(nh, 1100.) * 4. * bev + pow(nh, 70.) * .3 * bev + pow(nh, 14.) * mix(.035, .02, uDark)) * uLightOn * (1. + (P.w > .5 ? P.z : 0.));
   float inner = pow(max(-dot(n.xy, normalize(uLight.xy - p + .001)), 0.), 1.4) * .5 * uLightOn;
   vec3 glow = mix(vec3(.85, .75, 1.), vec3(.6, .5, 1.), uDark);
   vec3 c;
@@ -309,9 +316,12 @@ vec3 shade(vec2 p, int i, float d, float px, int un) {
     // print do projeto sob uma placa de vidro
     float layer = P.w - 2.;
     float lod = max(log2(IMGW / max(r.z / px, 1.)), 0.);
-    vec2 uv = (p - r.xy) / r.zw;
-    uv = .5 + (uv - .5) * (1. - .035 * P.z);
-    uv += n.xy * 12. * s * s / r.zw;
+    // o print cobre a placa sem deformar (preso no canto de cima, como object-position: top left)
+    float ra = r.z / r.w * (IMGH / IMGW);
+    vec2 cv = ra > 1. ? vec2(1., 1. / ra) : vec2(ra, 1.);
+    vec2 uv = (p - r.xy) / r.zw * cv;
+    uv = .5 * cv + (uv - .5 * cv) * (1. - .035 * P.z);
+    uv += n.xy * 12. * s * s / r.zw * cv;
     c = img(layer, uv, lod);
     c = c * (1. - F) + refl * F * .55 + spec + inner * glow * .4 + smoothstep(.86, .97, s) * .22;
     if (i == uLensI && uLens.w > .01) {
@@ -325,9 +335,9 @@ vec3 shade(vec2 p, int i, float d, float px, int un) {
         float ls = min(1. - clamp(ld / lr, 0., 1.), .97);
         vec2 lg = normalize(uLens.xy - p + .001);
         vec3 ln = normalize(vec3(-lg * ls, sqrt(1. - ls * ls)));
-        vec2 c0 = (uLens.xy - r.xy) / r.zw;
+        vec2 c0 = (uLens.xy - r.xy) / r.zw * cv;
         vec2 base = c0 + (uv - c0) * (1. - .5 * sqrt(1. - ls * ls));
-        vec2 disp = ln.xy * 34. * ls * ls / r.zw;
+        vec2 disp = ln.xy * 34. * ls * ls / r.zw * cv;
         float l2 = max(lod - 1., 0.);
         vec3 lc = vec3(img(layer, base + disp, l2).r, img(layer, base + disp * 1.2, l2).g, img(layer, base + disp * 1.42, l2).b);
         float lF = .04 + .96 * pow(1. - ln.z, 5.);
@@ -374,7 +384,8 @@ void main() {
   for (int i = 0; i < 16; i++) {
     if (i >= uRectN) break;
     vec4 r = uRect[i];
-    if (p.x < r.x - 90. || p.x > r.x + r.z + 90. || p.y < r.y - 90. || p.y > r.y + r.w + 90.) continue;
+    float mg = 90. + abs(uRectP[i].z) * 70.;  // a fita ondulada (e a sombra dela) sai da caixa
+    if (p.x < r.x - mg || p.x > r.x + r.z + mg || p.y < r.y - mg || p.y > r.y + r.w + mg) continue;
     float d = panelD(p, i);
     if (d > -1.5 * px) { below = top; top = i; dt = d; }
     if (d > dnAny) { dnAny = d; nearAny = i; }
@@ -384,7 +395,7 @@ void main() {
   if (nearAny >= 0 && dnAny < 1.) col *= 1. - smoothstep(-40., 4., panelD(p - sdir, nearAny)) * mix(.12, .34, uDark);
   if (top >= 0) {
     float tt = uRectP[top].w;
-    vec3 pc = shade(p, top, dt, px, tt > .5 && tt < 1.5 ? below : -1);
+    vec3 pc = shade(p, top, dt, px, tt < 1.5 ? below : -1);
     if (nearImg >= 0 && nearImg != top && dnImg < 1.) pc *= 1. - smoothstep(-34., 4., panelD(p - sdir, nearImg)) * mix(.16, .4, uDark);
     col = mix(col, pc, clamp(dt / px + .5, 0., 1.));
   }

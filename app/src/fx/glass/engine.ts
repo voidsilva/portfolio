@@ -14,7 +14,7 @@ const FONT = '"Bricolage Grotesque", system-ui, sans-serif';
 
 type U = Record<string, WebGLUniformLocation | null>;
 const COMMON_U = ['uView', 'uRes', 'uTime', 'uDark', 'uLight', 'uLightOn', 'uVel', 'uRip'];
-const SCENE_U = ['uSdf', 'uPoster', 'uSlots', 'uSlotA', 'uSlotB', 'uMorph', 'uBevel', 'uBox', 'uTexel', 'uWordOff', 'uWordOn', 'uDrops', 'uDropMix', 'uDropR', 'uScroll', 'uPosterLod'];
+const SCENE_U = ['uSdf', 'uPoster', 'uSlots', 'uSlotA', 'uSlotB', 'uMorph', 'uBevel', 'uBox', 'uTexel', 'uWordOff', 'uWordOn', 'uDrops', 'uDropMix', 'uDropR', 'uScroll', 'uPanX', 'uPosterLod', 'uZoom', 'uWall'];
 const UI_U = ['uScene', 'uImgs', 'uRect', 'uRectP', 'uRectN', 'uLens', 'uLensI', 'uFrost'];
 
 const forced = () => {
@@ -55,7 +55,11 @@ export class Glass {
   private ripI = 0;
   private bw = 1;
   private bh = 1;
+  /** topo e base da tinta de cada palavra, em px da caixa (zoom 1) */
+  ink: [number, number][] = [];
   private texel = 1;
+  /** centro do buraco do "D" (px CSS, relativo à caixa das palavras): é por ali que a câmera atravessa */
+  private focus = [0, 0];
   private dts: number[] = [];
   private good = 0;
 
@@ -72,7 +76,7 @@ export class Glass {
   lost = false;
   onLost: (() => void) | null = null;
   /** valores que o site anima */
-  state = { a: 0, b: 0, morph: 0, wordOn: 0, offY: 0, dropMix: 1, dropR: 40, dark: 0, vel: 0, lightOn: 0, scroll: 0, posterLod: 1.2 };
+  state = { a: 0, b: 0, morph: 0, wordOn: 0, offX: 0, offY: 0, zoom: 1, cen: 0, wall: 1, dropMix: 1, dropR: 40, dark: 0, vel: 0, lightOn: 0, scroll: 0, panX: 0, posterLod: 1.2 };
   light = new Float32Array([0, 0, 700]);
   drops = new Float32Array(15);
   rects = new Float32Array(64);
@@ -98,7 +102,7 @@ export class Glass {
     });
     if (!gl) throw new Error('sem WebGL2');
     this.gl = gl;
-    const head = `#version 300 es\n#define SPEC ${spec}\n#define IMGW ${IMG_W}.\n`;
+    const head = `#version 300 es\n#define SPEC ${spec}\n#define IMGW ${IMG_W}.\n#define IMGH ${IMG_H}.\n`;
     this.ps = this.program(SCENE.replace('#version 300 es\n', head));
     this.pu = this.program(UI.replace('#version 300 es\n', head));
     for (const n of [...COMMON_U, ...SCENE_U]) this.us[n] = gl.getUniformLocation(this.ps, n);
@@ -170,6 +174,11 @@ export class Glass {
     return (performance.now() - this.t0) / 1000;
   }
 
+  /** Miolo do "D" na tela (px CSS), com a palavra no lugar dela (sem deslocamento). */
+  focusPoint(): [number, number] {
+    return [(this.w - this.bw) / 2 + this.focus[0], (this.h - this.bh) / 2 + this.focus[1]];
+  }
+
   /** Recalcula o tamanho do desenho (viewport × densidade × qualidade adaptativa). */
   resize() {
     const gl = this.gl;
@@ -234,6 +243,7 @@ export class Glass {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const mobile = bw < 700;
+    let est = [sw / 2, sh / 2, sh * 0.1];
     WORDS.forEach((word, i) => {
       const cy = sh * i + sh / 2;
       // no celular, SilvaDev vira duas linhas para o vidro ficar grande
@@ -247,6 +257,15 @@ export class Glass {
       ctx.font = font(size);
       (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${-size * 0.035}px`;
       lines.forEach((l, j) => ctx.fillText(l, sw / 2, cy + size * 0.04 + (j - (lines.length - 1) / 2) * size * 0.9));
+      if (i === 0) {
+        // onde fica o miolo do "D": estimativa pelas medidas do texto, refinada depois pelo campo de distância
+        const line = lines.length - 1;
+        const l = lines[line];
+        const left = sw / 2 - ctx.measureText(l).width / 2;
+        const pre = ctx.measureText(l.slice(0, l.indexOf('D'))).width;
+        const dw = ctx.measureText('D').width;
+        est = [left + pre + dw * 0.5, cy + size * 0.04 + (line - (lines.length - 1) / 2) * size * 0.9, size * 0.28];
+      }
     });
     const px = ctx.getImageData(0, 0, c.width, c.height).data;
     const n = sw * sh;
@@ -255,12 +274,40 @@ export class Glass {
       for (let i = 0, o = s * n * 4; i < n; i++, o += 4) a[i] = px[o];
       return a;
     });
+    // altura real da tinta de cada palavra (px da caixa): a câmera usa para enquadrar a palavra num vão
+    const ink = alphas.map((a): [number, number] => {
+      const row = (y: number) => {
+        for (let x = 0, o = y * sw; x < sw; x++, o++) if (a[o] > 127) return true;
+        return false;
+      };
+      let top = 0;
+      let bot = sh - 1;
+      while (top < sh && !row(top)) top++;
+      while (bot > top && !row(bot)) bot--;
+      return top >= sh ? [0, bh] : [top / k, (bot + 1) / k];
+    });
     const res = await this.sdfJob(sw, sh, k, alphas);
     if (this.lost) return;
+    this.ink = ink;
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.sdf);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, sw, sh * WORDS.length, 0, gl.RG, gl.FLOAT, res.d);
     this.bevel = res.m.map((m) => Math.min(64, Math.max(8, m * 0.85)));
+    // o ponto mais fundo do buraco do "D" (distância mais negativa perto da estimativa)
+    let best = 0;
+    let fx = est[0];
+    let fy = est[1];
+    const r = Math.round(est[2]);
+    for (let y = Math.max(0, Math.round(est[1]) - r); y < Math.min(sh, Math.round(est[1]) + r); y++)
+      for (let x = Math.max(0, Math.round(est[0]) - r); x < Math.min(sw, Math.round(est[0]) + r); x++) {
+        const v = res.d[(y * sw + x) * 2];
+        if (v < best) {
+          best = v;
+          fx = x;
+          fy = y;
+        }
+      }
+    this.focus = [fx / k, fy / k];
     this.bw = bw;
     this.bh = bh;
     this.texel = 1 / k;
@@ -381,12 +428,19 @@ export class Glass {
     gl.uniform2f(u.uBevel, this.bevel[s.a] ?? 24, this.bevel[s.b] ?? 24);
     gl.uniform4f(u.uBox, (this.w - this.bw) / 2, (this.h - this.bh) / 2, this.bw, this.bh);
     gl.uniform1f(u.uTexel, this.texel);
-    gl.uniform2f(u.uWordOff, 0, s.offY);
+    gl.uniform2f(u.uWordOff, s.offX, s.offY);
+    const bx = (this.w - this.bw) / 2;
+    const by = (this.h - this.bh) / 2;
+    const fx = this.focus[0] + (this.bw / 2 - this.focus[0]) * s.cen;
+    const fy = this.focus[1] + (this.bh / 2 - this.focus[1]) * s.cen;
+    gl.uniform3f(u.uZoom, bx + fx + s.offX, by + fy + s.offY, Math.max(0.05, s.zoom));
+    gl.uniform1f(u.uWall, Math.max(0.05, s.wall));
     gl.uniform1f(u.uWordOn, this.wordsReady ? s.wordOn : 0);
     gl.uniform3fv(u.uDrops, this.drops);
     gl.uniform1f(u.uDropMix, s.dropMix);
     gl.uniform1f(u.uDropR, s.dropR);
     gl.uniform1f(u.uScroll, s.scroll);
+    gl.uniform1f(u.uPanX, s.panX);
     gl.uniform1f(u.uPosterLod, s.posterLod);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 

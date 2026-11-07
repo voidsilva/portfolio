@@ -17,12 +17,12 @@
       try{var t=localStorage.getItem("sd-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.dataset.theme="dark";var m=localStorage.getItem("sd-motion");if(m==="lite"||matchMedia("(prefers-reduced-motion: reduce)").matches)document.documentElement.classList.add("lite")}catch(e){}
       if(document.documentElement.classList.contains("lite"))document.documentElement.classList.remove("is-loading");
     </script>
-    <script type="module" crossorigin src="/assets/index-B3QQwjKM.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BMPXHohY.css">
+    <script type="module" crossorigin src="/assets/index-DErxCTtG.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BTok6Xxz.css">
   </head>
   <body>
     
-<a class="skip" href="#projetos">Pular para os projetos</a>
+<a class="skip" href="#projetos" data-go="projetos">Pular para os projetos</a>
 <canvas class="liquid" aria-hidden="true"></canvas>
 <div class="loader" aria-hidden="true"><span class="loader__n">0</span><span class="loader__t">derretendo o vidro</span></div>
 
@@ -36,8 +36,8 @@
   <button class="tbtn" type="button" data-theme-toggle aria-label="Trocar tema claro ou escuro"><span></span></button>
 </header>
 
-<main id="inicio">
-  <section class="hero" data-word="1" aria-labelledby="hero-t">
+<main id="inicio" class="stage">
+  <section class="sc sc--hero" aria-labelledby="hero-t">
     <h1 class="vh" id="hero-t">SilvaDev, Paulo Silva: sistemas sob medida</h1>
     <p class="stage__word" aria-hidden="true">SilvaDev</p>
     <p class="hero__who"><b>Paulo Silva</b><span>Desenvolvedor full stack · Brasil</span></p>
@@ -45,104 +45,108 @@
       <p class="hero__sub">Eu tiro empresas da planilha. ERPs, painéis e integrações sob medida, do banco de dados à tela.</p>
       <a class="btn btn--solid" href="#projetos" data-go="projetos">Ver projetos <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></a>
     </div>
-    <p class="hero__hint" aria-hidden="true">O mouse é a luz · clique para fazer ondas · role para derreter</p>
+    <p class="hero__hint" aria-hidden="true"><span>O mouse é a luz · clique para fazer ondas · role para atravessar o vidro</span></p>
   </section>
 
-  <section class="sheet sheet--about" data-glass="sheet" aria-labelledby="about-t">
-    <p class="kicker">Como eu trabalho</p>
-    <h2 class="h2" id="about-t">Sistemas que a equipe usa todo dia, sem manual.</h2>
-    <ol class="steps"><li class="step"><span class="step__n">01</span><h3>Entendo o que dói</h3><p>Converso com quem usa a planilha todo dia. Antes de escrever código, eu sei de onde vem cada número.</p></li><li class="step"><span class="step__n">02</span><h3>Desenho o sistema</h3><p>Dados, perfis de acesso e telas. Você aprova o desenho antes de qualquer linha.</p></li><li class="step"><span class="step__n">03</span><h3>Construo em partes</h3><p>Etapas curtas e já usáveis. Cada parte entra no ar e recebe o seu retorno.</p></li><li class="step"><span class="step__n">04</span><h3>Coloco no ar e cuido</h3><p>Deploy, migração dos dados antigos e acompanhamento nas primeiras semanas.</p></li></ol>
+  <section class="sc sc--about" id="sobre" aria-labelledby="about-t">
+    <div class="sheet sheet--about" data-glass="sheet">
+      <p class="kicker">Como eu trabalho</p>
+      <h2 class="h2" id="about-t">Sistemas que a equipe usa todo dia, sem manual.</h2>
+      <ol class="steps"><li class="step"><span class="step__n">01</span><h3>Entendo o que dói</h3><p>Converso com quem usa a planilha todo dia. Antes de escrever código, eu sei de onde vem cada número.</p></li><li class="step"><span class="step__n">02</span><h3>Desenho o sistema</h3><p>Dados, perfis de acesso e telas. Você aprova o desenho antes de qualquer linha.</p></li><li class="step"><span class="step__n">03</span><h3>Construo em partes</h3><p>Etapas curtas e já usáveis. Cada parte entra no ar e recebe o seu retorno.</p></li><li class="step"><span class="step__n">04</span><h3>Coloco no ar e cuido</h3><p>Deploy, migração dos dados antigos e acompanhamento nas primeiras semanas.</p></li></ol>
+    </div>
   </section>
 
-  <section class="stage" id="projetos" data-word="2" aria-labelledby="projetos-t"><h2 class="vh" id="projetos-t">Projetos</h2><p class="stage__sub" data-glass="pill">Trabalho real, em produção</p><p class="stage__word" aria-hidden="true">Projetos</p></section>
-
-  <section class="sheet sheet--work" data-glass="sheet" aria-label="Projetos em produção">
-    <article class="case" data-i="0">
+  <section class="sc sc--work" id="projetos" aria-labelledby="projetos-t">
+    <h2 class="vh" id="projetos-t">Projetos</h2>
+    <p class="stage__word" aria-hidden="true">Projetos</p>
+    <div class="track">
+      <div class="proj proj--word"><div class="sc__cap"><p class="stage__sub" data-glass="pill">Trabalho real, em produção</p></div></div>
+      <article class="proj"><div class="proj__card" data-glass="sheet">
     <button type="button" class="case__media" data-open="0" aria-label="Ver detalhes de Belaways Intelligence">
       <span class="case__tilt" data-glass="img" data-img="0"><img src="/belaways.webp" alt="Painel Central de operação do Belaways Intelligence em modo escuro" width="1600" height="1000" loading="lazy" decoding="async" /><span class="case__shine"></span></span>
     </button>
     <div class="case__meta">
-      <p class="case__n">01</p>
-      <div>
-        <p class="case__kicker">ERP interno · Full stack</p>
-        <h3 class="case__name">Belaways Intelligence</h3>
-        <p class="case__sum">Sistema web interno para a gestão operacional da Belaways Cosméticos. Não é loja nem checkout: é a camada administrativa que reúne indicadores, estoque, pedidos, alertas, auditoria, logística e usuários.</p>
-        <ul class="tags"><li>React</li><li>TypeScript</li><li>Vite</li><li>Tailwind CSS</li><li>TanStack Query</li></ul>
-        <div class="case__links">
-          <button type="button" class="btn btn--solid" data-open="0">Ver o case <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></button>
-          <a class="link" href="https://github.com/voidsilva/Belaways-ERP" target="_blank" rel="noopener noreferrer"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Código</a>
-        </div>
+      <p class="case__n">01 / 03</p>
+      <p class="case__kicker">ERP interno · Full stack</p>
+      <h3 class="case__name">Belaways Intelligence</h3>
+      <p class="case__sum">Sistema web interno para a gestão operacional da Belaways Cosméticos. Não é loja nem checkout: é a camada administrativa que reúne indicadores, estoque, pedidos, alertas, auditoria, logística e usuários.</p>
+      <ul class="tags"><li>React</li><li>TypeScript</li><li>Vite</li><li>Tailwind CSS</li><li>TanStack Query</li></ul>
+      <div class="case__links">
+        <button type="button" class="btn btn--solid" data-open="0">Ver o case <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></button>
+        <a class="link" href="https://github.com/voidsilva/Belaways-ERP" target="_blank" rel="noopener noreferrer"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Código</a>
       </div>
     </div>
-  </article><article class="case" data-i="1">
+  </div></article><article class="proj"><div class="proj__card" data-glass="sheet">
     <button type="button" class="case__media" data-open="1" aria-label="Ver detalhes de Ponto Facial">
       <span class="case__tilt" data-glass="img" data-img="1"><img src="/pontofacial.webp" alt="Visão geral do sistema de ponto facial da Curitiba Empreiteira" width="1600" height="1000" loading="lazy" decoding="async" /><span class="case__shine"></span></span>
     </button>
     <div class="case__meta">
-      <p class="case__n">02</p>
-      <div>
-        <p class="case__kicker">Reconhecimento facial · Full stack</p>
-        <h3 class="case__name">Ponto Facial</h3>
-        <p class="case__sum">Sistema web de controle de presença para as obras da Curitiba Empreiteira, com reconhecimento facial, registro automático de ponto, relatórios, auditoria e confirmação por e-mail.</p>
-        <ul class="tags"><li>React</li><li>TypeScript</li><li>Vite</li><li>Python</li><li>FastAPI</li></ul>
-        <div class="case__links">
-          <button type="button" class="btn btn--solid" data-open="1">Ver o case <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></button>
-          <a class="link" href="https://github.com/Projeto-Feira-Maluf-2026/projeto-novo-ponto-facial" target="_blank" rel="noopener noreferrer"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Código</a>
-        </div>
+      <p class="case__n">02 / 03</p>
+      <p class="case__kicker">Reconhecimento facial · Full stack</p>
+      <h3 class="case__name">Ponto Facial</h3>
+      <p class="case__sum">Sistema web de controle de presença para as obras da Curitiba Empreiteira, com reconhecimento facial, registro automático de ponto, relatórios, auditoria e confirmação por e-mail.</p>
+      <ul class="tags"><li>React</li><li>TypeScript</li><li>Vite</li><li>Python</li><li>FastAPI</li></ul>
+      <div class="case__links">
+        <button type="button" class="btn btn--solid" data-open="1">Ver o case <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></button>
+        <a class="link" href="https://github.com/Projeto-Feira-Maluf-2026/projeto-novo-ponto-facial" target="_blank" rel="noopener noreferrer"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Código</a>
       </div>
     </div>
-  </article><article class="case" data-i="2">
+  </div></article><article class="proj"><div class="proj__card" data-glass="sheet">
     <button type="button" class="case__media" data-open="2" aria-label="Ver detalhes de BuyBrazil10 · ERP Financeiro">
       <span class="case__tilt" data-glass="img" data-img="2"><img src="/gastos.webp" alt="Tela de entrada do ERP Financeiro BuyBrazil10" width="1600" height="1000" loading="lazy" decoding="async" /><span class="case__shine"></span></span>
     </button>
     <div class="case__meta">
-      <p class="case__n">03</p>
-      <div>
-        <p class="case__kicker">Financeiro · Web app</p>
-        <h3 class="case__name">BuyBrazil10 · ERP Financeiro</h3>
-        <p class="case__sum">Controle de gastos da BuyBrazil10 com dashboard, lançamentos, plano de contas, orçamento por categoria, relatórios em PDF e exportação CSV.</p>
-        <ul class="tags"><li>JavaScript</li><li>HTML</li><li>CSS</li><li>Chart.js</li><li>jsPDF</li></ul>
-        <div class="case__links">
-          <button type="button" class="btn btn--solid" data-open="2">Ver o case <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></button>
-          <a class="link" href="https://github.com/voidsilva/Projeto-Controle-de-Gastos-Robinson" target="_blank" rel="noopener noreferrer"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Código</a>
-        </div>
+      <p class="case__n">03 / 03</p>
+      <p class="case__kicker">Financeiro · Web app</p>
+      <h3 class="case__name">BuyBrazil10 · ERP Financeiro</h3>
+      <p class="case__sum">Controle de gastos da BuyBrazil10 com dashboard, lançamentos, plano de contas, orçamento por categoria, relatórios em PDF e exportação CSV.</p>
+      <ul class="tags"><li>JavaScript</li><li>HTML</li><li>CSS</li><li>Chart.js</li><li>jsPDF</li></ul>
+      <div class="case__links">
+        <button type="button" class="btn btn--solid" data-open="2">Ver o case <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></button>
+        <a class="link" href="https://github.com/voidsilva/Projeto-Controle-de-Gastos-Robinson" target="_blank" rel="noopener noreferrer"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Código</a>
       </div>
     </div>
-  </article>
-    <div class="more">
-      <h3 class="h3">Outros trabalhos</h3>
-      <p class="muted">Com link: código aberto no GitHub. Sem link: exemplos do que eu construo.</p>
-      <ul class="arcs"><li><a class="arc" href="https://github.com/voidsilva/api-rest-tarefas" target="_blank" rel="noopener noreferrer"><span class="arc__name">API REST de Tarefas</span><span class="arc__note">API com JWT, validação, paginação e testes, em TypeScript nativo no Node 22 e sem dependências.</span><span class="arc__tags">TypeScript · Node.js · Docker</span><span class="arc__go">Código <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></span></a></li><li><div class="arc arc--idea"><span class="arc__name">Agenda Fácil</span><span class="arc__note">Agendamento online para salões e clínicas, com horários livres em tempo real e lembrete automático.</span><span class="arc__tags">React · Node.js · PostgreSQL</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">Estoque Pro</span><span class="arc__note">Controle de estoque com leitura de código de barras, alertas de mínimo e histórico de movimentações.</span><span class="arc__tags">TypeScript · Express · Supabase</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">PDV Web</span><span class="arc__note">Frente de caixa que funciona sem internet e sincroniza as vendas quando a conexão volta.</span><span class="arc__tags">React · IndexedDB · Node.js</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">Painel de Vendas</span><span class="arc__note">Dashboard com metas, ranking de produtos e gráficos atualizados a cada pedido.</span><span class="arc__tags">React · Chart.js · FastAPI</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">Atende Chat</span><span class="arc__note">Chat de atendimento em tempo real com fila, transferência entre atendentes e histórico por cliente.</span><span class="arc__tags">Node.js · WebSocket · PostgreSQL</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">Relatórios em PDF</span><span class="arc__note">Serviço que recebe planilhas e devolve relatórios em PDF com gráficos, pronto para enviar ao cliente.</span><span class="arc__tags">Python · FastAPI · Docker</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">Portal do Cliente</span><span class="arc__note">Área do cliente com pedidos, segunda via de boletos, notas fiscais e abertura de chamados.</span><span class="arc__tags">React · TypeScript · Supabase</span><span class="arc__go">Exemplo</span></div></li></ul>
+  </div></article>
+      <div class="proj"><div class="proj__card proj__card--more" data-glass="sheet">
+        <h3 class="h3">Outros trabalhos</h3>
+        <p class="muted">Com link: código aberto no GitHub. Sem link: exemplos do que eu construo.</p>
+        <ul class="arcs"><li><a class="arc" href="https://github.com/voidsilva/api-rest-tarefas" target="_blank" rel="noopener noreferrer"><span class="arc__name">API REST de Tarefas</span><span class="arc__note">API com JWT, validação, paginação e testes, em TypeScript nativo no Node 22 e sem dependências.</span><span class="arc__tags">TypeScript · Node.js · Docker</span><span class="arc__go">Código <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></span></a></li><li><div class="arc arc--idea"><span class="arc__name">Agenda Fácil</span><span class="arc__note">Agendamento online para salões e clínicas, com horários livres em tempo real e lembrete automático.</span><span class="arc__tags">React · Node.js · PostgreSQL</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">Estoque Pro</span><span class="arc__note">Controle de estoque com leitura de código de barras, alertas de mínimo e histórico de movimentações.</span><span class="arc__tags">TypeScript · Express · Supabase</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">PDV Web</span><span class="arc__note">Frente de caixa que funciona sem internet e sincroniza as vendas quando a conexão volta.</span><span class="arc__tags">React · IndexedDB · Node.js</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">Painel de Vendas</span><span class="arc__note">Dashboard com metas, ranking de produtos e gráficos atualizados a cada pedido.</span><span class="arc__tags">React · Chart.js · FastAPI</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">Atende Chat</span><span class="arc__note">Chat de atendimento em tempo real com fila, transferência entre atendentes e histórico por cliente.</span><span class="arc__tags">Node.js · WebSocket · PostgreSQL</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">Relatórios em PDF</span><span class="arc__note">Serviço que recebe planilhas e devolve relatórios em PDF com gráficos, pronto para enviar ao cliente.</span><span class="arc__tags">Python · FastAPI · Docker</span><span class="arc__go">Exemplo</span></div></li><li><div class="arc arc--idea"><span class="arc__name">Portal do Cliente</span><span class="arc__note">Área do cliente com pedidos, segunda via de boletos, notas fiscais e abertura de chamados.</span><span class="arc__tags">React · TypeScript · Supabase</span><span class="arc__go">Exemplo</span></div></li></ul>
+      </div></div>
     </div>
   </section>
 
-  <section class="stage" id="servicos" data-word="3" aria-labelledby="servicos-t"><h2 class="vh" id="servicos-t">Serviços</h2><p class="stage__sub" data-glass="pill">Do banco de dados até a tela</p><p class="stage__word" aria-hidden="true">Serviços</p></section>
-
-  <section class="sheet sheet--svc" data-glass="sheet" aria-label="Serviços e perguntas">
+  <section class="sc sc--svc" id="servicos" aria-labelledby="servicos-t">
+    <h2 class="vh" id="servicos-t">Serviços</h2>
+    <p class="stage__word" aria-hidden="true">Serviços</p>
+    <div class="sc__cap"><p class="stage__sub" data-glass="pill">Do banco de dados até a tela</p></div>
     <ul class="svc">
-      <li class="svc__item"><span class="svc__n">01</span><h3>Sistemas internos e ERPs</h3><p>Painéis que juntam estoque, pedidos, financeiro e usuários num lugar só.</p><span class="svc__tags">React · TypeScript · Supabase</span></li><li class="svc__item"><span class="svc__n">02</span><h3>APIs REST</h3><p>Autenticação, validação, paginação e testes, com contrato claro para quem consome.</p><span class="svc__tags">Node.js · Express · FastAPI</span></li><li class="svc__item"><span class="svc__n">03</span><h3>Integrações</h3><p>Conecto ferramentas que a empresa já usa, sem obrigar ninguém a trocar de sistema.</p><span class="svc__tags">Tray · Tiny · Webhooks</span></li><li class="svc__item"><span class="svc__n">04</span><h3>Dashboards e relatórios</h3><p>Indicadores, gráficos e exportação em PDF, XLSX e CSV.</p><span class="svc__tags">Chart.js · jsPDF · SQL</span></li><li class="svc__item"><span class="svc__n">05</span><h3>Controle de acesso</h3><p>Papéis e permissões por perfil, com auditoria de quem fez o quê.</p><span class="svc__tags">RBAC · Zod · Logs</span></li><li class="svc__item"><span class="svc__n">06</span><h3>Visão computacional</h3><p>Reconhecimento facial em produção, rodando num serviço separado.</p><span class="svc__tags">Python · InsightFace · ONNX</span></li><li class="svc__item"><span class="svc__n">07</span><h3>Banco de dados</h3><p>Modelagem, políticas de acesso e consultas que aguentam o volume do dia a dia.</p><span class="svc__tags">PostgreSQL · Supabase</span></li><li class="svc__item"><span class="svc__n">08</span><h3>Deploy e infraestrutura</h3><p>Containers, variáveis de ambiente e publicação contínua.</p><span class="svc__tags">Docker · Vercel</span></li>
+      <li class="svc__item" data-glass="card"><span class="svc__n">01</span><h3>Sistemas internos e ERPs</h3><p>Painéis que juntam estoque, pedidos, financeiro e usuários num lugar só.</p><span class="svc__tags">React · TypeScript · Supabase</span></li><li class="svc__item" data-glass="card"><span class="svc__n">02</span><h3>APIs REST</h3><p>Autenticação, validação, paginação e testes, com contrato claro para quem consome.</p><span class="svc__tags">Node.js · Express · FastAPI</span></li><li class="svc__item" data-glass="card"><span class="svc__n">03</span><h3>Integrações</h3><p>Conecto ferramentas que a empresa já usa, sem obrigar ninguém a trocar de sistema.</p><span class="svc__tags">Tray · Tiny · Webhooks</span></li><li class="svc__item" data-glass="card"><span class="svc__n">04</span><h3>Dashboards e relatórios</h3><p>Indicadores, gráficos e exportação em PDF, XLSX e CSV.</p><span class="svc__tags">Chart.js · jsPDF · SQL</span></li><li class="svc__item" data-glass="card"><span class="svc__n">05</span><h3>Controle de acesso</h3><p>Papéis e permissões por perfil, com auditoria de quem fez o quê.</p><span class="svc__tags">RBAC · Zod · Logs</span></li><li class="svc__item" data-glass="card"><span class="svc__n">06</span><h3>Visão computacional</h3><p>Reconhecimento facial em produção, rodando num serviço separado.</p><span class="svc__tags">Python · InsightFace · ONNX</span></li><li class="svc__item" data-glass="card"><span class="svc__n">07</span><h3>Banco de dados</h3><p>Modelagem, políticas de acesso e consultas que aguentam o volume do dia a dia.</p><span class="svc__tags">PostgreSQL · Supabase</span></li><li class="svc__item" data-glass="card"><span class="svc__n">08</span><h3>Deploy e infraestrutura</h3><p>Containers, variáveis de ambiente e publicação contínua.</p><span class="svc__tags">Docker · Vercel</span></li>
     </ul>
-    <div class="faq" id="faq">
-      <h3 class="h3">Perguntas que sempre aparecem</h3>
-      <div class="faq__list"><details class="faq__item"><summary><span>Quem é o SilvaDev?</span><i aria-hidden="true"></i></summary><p>Sou eu, Paulo Silva, desenvolvedor full stack. Cuido do projeto da conversa inicial até o deploy, sem intermediário.</p></details><details class="faq__item"><summary><span>O que você constrói?</span><i aria-hidden="true"></i></summary><p>Sistemas web para operações reais: ERPs internos, controle de ponto, financeiro, APIs e integrações entre ferramentas.</p></details><details class="faq__item"><summary><span>Com que tipo de empresa você trabalha?</span><i aria-hidden="true"></i></summary><p>Empresas que dependem de planilhas ou de sistemas soltos e querem tudo num painel só, com acesso por perfil.</p></details><details class="faq__item"><summary><span>Qual é a sua stack?</span><i aria-hidden="true"></i></summary><p>TypeScript, React e Vite no front. Node, Express e FastAPI no back. PostgreSQL e Supabase nos dados. Docker para rodar em qualquer lugar.</p></details><details class="faq__item"><summary><span>Quanto custa um projeto?</span><i aria-hidden="true"></i></summary><p>Depende do escopo. Primeiro entendo o problema e o que já existe, depois mando uma proposta com etapas e prazos.</p></details><details class="faq__item"><summary><span>Como começa?</span><i aria-hidden="true"></i></summary><p>Com uma conversa sobre o processo que dói hoje. Não precisa chegar com tudo definido.</p></details></div>
+  </section>
+
+  <section class="sc sc--faq" id="faq" aria-labelledby="faq-t">
+    <div class="sheet sheet--faq" data-glass="sheet">
+      <h2 class="h3" id="faq-t">Perguntas que sempre aparecem</h2>
+      <div class="faq__list"><details class="faq__item" name="faq"><summary><span>Quem é o SilvaDev?</span><i aria-hidden="true"></i></summary><p>Sou eu, Paulo Silva, desenvolvedor full stack. Cuido do projeto da conversa inicial até o deploy, sem intermediário.</p></details><details class="faq__item" name="faq"><summary><span>O que você constrói?</span><i aria-hidden="true"></i></summary><p>Sistemas web para operações reais: ERPs internos, controle de ponto, financeiro, APIs e integrações entre ferramentas.</p></details><details class="faq__item" name="faq"><summary><span>Com que tipo de empresa você trabalha?</span><i aria-hidden="true"></i></summary><p>Empresas que dependem de planilhas ou de sistemas soltos e querem tudo num painel só, com acesso por perfil.</p></details><details class="faq__item" name="faq"><summary><span>Qual é a sua stack?</span><i aria-hidden="true"></i></summary><p>TypeScript, React e Vite no front. Node, Express e FastAPI no back. PostgreSQL e Supabase nos dados. Docker para rodar em qualquer lugar.</p></details><details class="faq__item" name="faq"><summary><span>Quanto custa um projeto?</span><i aria-hidden="true"></i></summary><p>Depende do escopo. Primeiro entendo o problema e o que já existe, depois mando uma proposta com etapas e prazos.</p></details><details class="faq__item" name="faq"><summary><span>Como começa?</span><i aria-hidden="true"></i></summary><p>Com uma conversa sobre o processo que dói hoje. Não precisa chegar com tudo definido.</p></details></div>
     </div>
   </section>
 
-  <section class="stage" id="contato" data-word="4" aria-labelledby="contato-t"><h2 class="vh" id="contato-t">Contato</h2><p class="stage__sub" data-glass="pill">Vamos conversar</p><p class="stage__word" aria-hidden="true">Contato</p></section>
-
-  <section class="sheet sheet--cta" data-glass="sheet" aria-labelledby="cta-t">
-    <h2 class="cta__title" id="cta-t">Qual planilha a gente aposenta primeiro?</h2>
-    <p class="lead">Me conta o processo que mais dá trabalho hoje. Não precisa chegar com tudo definido.</p>
-    <div class="cta__row">
-      <a class="btn btn--solid btn--big" href="https://github.com/voidsilva" target="_blank" rel="noopener noreferrer"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Falar comigo no GitHub <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></a>
-      <button class="copy" type="button" data-copy="https://github.com/voidsilva"><span class="copy__t">github.com/voidsilva</span><span class="copy__s" aria-live="polite">Copiar</span></button>
+  <section class="sc sc--cta" id="contato" aria-labelledby="cta-t">
+    <p class="stage__word" aria-hidden="true">Contato</p>
+    <div class="sheet sheet--cta" data-glass="sheet">
+      <h2 class="cta__title" id="cta-t">Qual planilha a gente aposenta primeiro?</h2>
+      <p class="lead">Me conta o processo que mais dá trabalho hoje. Não precisa chegar com tudo definido.</p>
+      <div class="cta__row">
+        <a class="btn btn--solid btn--big" href="https://github.com/voidsilva" target="_blank" rel="noopener noreferrer"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Falar comigo no GitHub <svg class="arr" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 12 12 4M5.5 4H12v6.5" stroke="currentColor" stroke-width="1.6"/></svg></a>
+        <button class="copy" type="button" data-copy="https://github.com/voidsilva"><span class="copy__t">github.com/voidsilva</span><span class="copy__s" aria-live="polite">Copiar</span></button>
+      </div>
+      <footer class="foot">
+        <a class="brand" href="#inicio" data-go="inicio"><svg class="mark" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M33 18H19a7 7 0 0 0 0 14h8a7 7 0 0 1 0 14H11" stroke="var(--ink)" stroke-width="8"/><path d="M36 12h1a20 20 0 0 1 0 40h-1" stroke="var(--purple)" stroke-width="8"/><circle cx="27" cy="7.5" r="3.4" fill="var(--cyan)"/></svg><span>Silva<em>Dev</em></span></a>
+        <span>© 2025–2026 SilvaDev · Paulo Silva</span>
+        <button type="button" class="foot__motion" data-motion>Entrar sem animações</button>
+        <button type="button" data-go="inicio">Voltar ao início ↑</button>
+      </footer>
     </div>
-    <footer class="foot">
-      <a class="brand" href="#inicio" data-go="inicio"><svg class="mark" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M33 18H19a7 7 0 0 0 0 14h8a7 7 0 0 1 0 14H11" stroke="var(--ink)" stroke-width="8"/><path d="M36 12h1a20 20 0 0 1 0 40h-1" stroke="var(--purple)" stroke-width="8"/><circle cx="27" cy="7.5" r="3.4" fill="var(--cyan)"/></svg><span>Silva<em>Dev</em></span></a>
-      <span>© 2025–2026 SilvaDev · Paulo Silva</span>
-      <button type="button" class="foot__motion" data-motion>Entrar sem animações</button>
-      <button type="button" data-go="inicio">Voltar ao início ↑</button>
-    </footer>
   </section>
 </main>
 

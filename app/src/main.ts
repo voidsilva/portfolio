@@ -12,105 +12,162 @@ const fine = matchMedia('(hover: hover) and (pointer: fine)').matches;
 const $ = <T extends Element = HTMLElement>(s: string) => document.querySelector<T>(s)!;
 const $$ = <T extends Element = HTMLElement>(s: string) => Array.from(document.querySelectorAll<T>(s));
 const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
-const smooth = (x: number) => x * x * (3 - 2 * x);
+const mix = (a: number, b: number, k: number) => a + (b - a) * k;
+/** quanto do trecho [a, b] do roteiro já passou (0..1) */
+const seg = (t: number, a: number, b: number) => clamp((t - a) / (b - a));
 const wait = (s: number) => new Promise<void>((r) => gsap.delayedCall(s, () => r()));
+const ease = (n: string) => gsap.parseEase(n) as (x: number) => number;
+const IO2 = ease('power2.inOut');
+const IO3 = ease('power3.inOut');
+const I2 = ease('power2.in');
+const I3 = ease('power3.in');
+const O2 = ease('power2.out');
+const O3 = ease('power3.out');
+const BACK = ease('back.out(1.7)');
+const SINE = ease('sine.inOut');
 
 const POSTER = ['SISTEMAS SOB MEDIDA', 'ERP · PAINÉIS · INTEGRAÇÕES', 'DO BANCO DE DADOS À TELA', 'SILVADEV · PAULO SILVA'];
 
-/* ---------- vidro ---------- */
+/* ---------- vidro: com WebGL a página vira um roteiro (cada rolagem move a cena de um jeito) ---------- */
 let glass: Glass | null = null;
 if (!lite && Glass.supported()) {
   try {
     glass = new Glass($<HTMLCanvasElement>('.liquid'), fine ? 6 : 4, projects.length);
-    root.classList.add('gl');
+    root.classList.add('gl', 'roteiro');
     glass.state.dark = root.dataset.theme === 'dark' ? 1 : 0;
-    glass.onLost = () => root.classList.remove('gl', 'gl-img');
   } catch (err) {
     console.warn('[vidro]', err);
     glass = null;
-    root.classList.remove('gl');
+    root.classList.remove('gl', 'roteiro');
   }
 }
 if (!glass) root.classList.remove('is-loading');
 
-/* ---------- rolagem suave (Lenis) no mesmo relógio do GSAP ---------- */
+/* ---------- rolagem suave (Lenis) ---------- */
+// folhas com rolagem própria (perguntas abertas, cartões no celular) rolam primeiro; no fim delas, a página continua
+const SCROLLERS = '.sheet--faq, .proj__card';
+function innerScroll({ deltaY, event }: { deltaY: number; event: WheelEvent | TouchEvent }) {
+  if (!event.type.includes('wheel')) return true;
+  const el = (event.target as Element | null)?.closest?.<HTMLElement>(SCROLLERS);
+  if (!el) return true;
+  const max = el.scrollHeight - el.clientHeight;
+  if (max < 2 || !/auto|scroll/.test(getComputedStyle(el).overflowY)) return true;
+  // no roteiro a folha só rola por dentro depois de parar na tela, nunca no meio de uma transição
+  if (glass && !settled(el)) return true;
+  return !((deltaY > 0 && el.scrollTop < max - 1) || (deltaY < 0 && el.scrollTop > 1));
+}
+function settled(el: HTMLElement) {
+  if (el.matches('.sheet--faq')) return tCur >= K.I0 + 1.05 && tCur <= K.F0;
+  const r = el.getBoundingClientRect();
+  return r.left > -2 && r.right < innerWidth + 2;
+}
 let lenis: Lenis | null = null;
 if (!lite) {
-  lenis = new Lenis({ lerp: 0.1, smoothWheel: true });
-  lenis.on('scroll', ScrollTrigger.update);
-  gsap.ticker.add((t) => lenis!.raf(t * 1000));
+  lenis = new Lenis({ lerp: 0.1, smoothWheel: true, virtualScroll: innerScroll });
+  if (!glass) {
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add((t) => lenis!.raf(t * 1000));
+  } else lenis.stop();
   gsap.ticker.lagSmoothing(0);
-  if (glass) lenis.stop();
 }
-const scrollToId = (id: string, immediate = false) => {
-  if (id === 'inicio') return lenis ? lenis.scrollTo(0, { immediate, force: true }) : scrollTo({ top: 0 });
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (lenis) lenis.scrollTo(el, { immediate, force: true });
-  else el.scrollIntoView();
+
+/* ---------- peças de vidro (o WebGL desenha cada uma no lugar do elemento, medido a cada quadro) ---------- */
+type Item = {
+  el: HTMLElement | null;
+  /** 0 folha, 1 pílula/cartão, 2+ print (camada da textura) */
+  type: number;
+  img: boolean;
+  card: boolean;
+  appear: number;
+  hover: number;
+  /** onda da borda (folhas): > 0 só as bordas, < 0 a folha inteira ondula como fita */
+  amp: number;
+  /** abrir de uma linha: largura × sx, altura de 26px até a cheia com sy */
+  sx: number;
+  sy: number;
+  /** virar bolha: 0 = o retângulo do elemento, 1 = círculo de raio cr no centro da tela */
+  morph: number;
+  cr: number;
+  r: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rad: number;
+  on: boolean;
 };
-
-/* ---------- peças de vidro: posição de cada uma (medida uma vez, não a cada quadro) ---------- */
-type Item = { el: HTMLElement; type: number; fixed: boolean; img: boolean; left: number; top: number; w: number; h: number; r: number; appear: number; hover: number };
+const mk = (el: HTMLElement | null, type: number): Item => ({
+  el,
+  type,
+  img: type >= 2,
+  card: false,
+  appear: 0,
+  hover: 0,
+  amp: 0,
+  sx: 1,
+  sy: 1,
+  morph: 0,
+  cr: 0,
+  r: 0,
+  x: 0,
+  y: 0,
+  w: 0,
+  h: 0,
+  rad: 0,
+  on: false,
+});
 const items: Item[] = [];
-if (glass)
-  for (const kind of ['sheet', 'pill', 'img', 'head'])
-    $$(`[data-glass="${kind}"]`).forEach((el) =>
-      items.push({
-        el,
-        type: kind === 'sheet' ? 0 : kind === 'img' ? 2 + Number(el.dataset.img) : 1,
-        fixed: kind === 'head',
-        img: kind === 'img',
-        left: 0,
-        top: 0,
-        w: 0,
-        h: 0,
-        r: 0,
-        appear: kind === 'sheet' ? 1 : 0,
-        hover: 0,
-      }),
-    );
-const imgItems = items.filter((i) => i.img);
-
-let stages: { top: number; h: number; word: number }[] = [];
-function measure() {
-  const y = scrollY;
-  stages = $$('[data-word]').map((el) => {
-    const b = el.getBoundingClientRect();
-    return { top: b.top + y, h: b.height, word: Number(el.dataset.word) - 1 };
-  });
-  for (const it of items) {
-    const b = it.el.getBoundingClientRect();
-    it.left = b.left;
-    it.top = b.top + (it.fixed ? 0 : y);
-    it.w = b.width;
-    it.h = b.height;
-    it.r = parseFloat(getComputedStyle(it.el).borderTopLeftRadius) || 0;
-  }
+const byEl = new Map<Element, Item>();
+let wipe = mk(null, 0);
+let head = mk(null, 1);
+if (glass) {
+  // ordem de desenho: folhas, pílulas, cartões, prints, a onda que cobre tudo e, por cima, o topo
+  for (const [kind, type] of [['sheet', 0], ['pill', 1], ['card', 1], ['img', 2]] as const)
+    $$(`[data-glass="${kind}"]`).forEach((el) => {
+      const it = mk(el, type === 2 ? 2 + Number(el.dataset.img) : type);
+      it.card = kind === 'card';
+      items.push(it);
+      byEl.set(el, it);
+    });
+  wipe = mk(null, 0);
+  items.push(wipe);
+  head = mk($<HTMLElement>('[data-glass="head"]'), 1);
+  items.push(head);
 }
+const item = (sel: string) => byEl.get($(sel))!;
 
-/* ---------- palavra de vidro: qual aparece, quanto já derreteu, onde está ---------- */
-function syncWord(g: Glass) {
-  if (!stages.length) return;
-  const y = scrollY;
-  const H = innerHeight;
-  let k = 0;
-  for (let i = 1; i < stages.length; i++) if (y >= stages[i].top - H) k = i;
-  const s = g.state;
-  const cur = stages[k];
-  if (k === 0) {
-    s.a = s.b = cur.word;
-    s.morph = 0;
-  } else {
-    // a faixa nova chega com a palavra anterior, que derrete na nova enquanto sobe
-    s.a = stages[k - 1].word;
-    s.b = cur.word;
-    s.morph = smooth(clamp((y - (cur.top - H * 0.55)) / (H * 0.7)));
-  }
-  const vis = (st: { top: number; h: number }) => clamp((Math.min(y + H, st.top + st.h) - Math.max(y, st.top)) / H);
-  // coberta por uma folha, a palavra afina até sumir; descoberta, volta a encher
-  s.wordOn = smooth(clamp(Math.max(vis(cur), k > 0 ? vis(stages[k - 1]) : 0) / 0.3));
-  s.offY = clamp((cur.top - y) * 0.3, -H * 0.25, H * 0.25);
+function place(it: Item, W: number, H: number) {
+  if (it.el) {
+    const b = it.el.getBoundingClientRect();
+    let x = b.left;
+    let y = b.top;
+    let w = b.width;
+    let h = b.height;
+    let rad = Math.min(it.r, w / 2, h / 2);
+    if (it.sx !== 1 || it.sy !== 1) {
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      w *= it.sx;
+      h = mix(26, h, it.sy);
+      x = cx - w / 2;
+      y = cy - h / 2;
+      rad = Math.min(it.r, w / 2, h / 2);
+    }
+    if (it.morph > 0) {
+      const k = clamp(it.morph);
+      x = mix(x, W / 2 - it.cr, k);
+      y = mix(y, H / 2 - it.cr, k);
+      w = mix(w, it.cr * 2, k);
+      h = mix(h, it.cr * 2, k);
+      rad = mix(rad, it.cr, k);
+    }
+    it.x = x;
+    it.y = y;
+    it.w = w;
+    it.h = h;
+    it.rad = rad;
+  } else it.rad = 0;
+  it.on = it.w >= 1 && it.h >= 1 && it.y < H + 60 && it.y + it.h > -60 && it.x < W + 60 && it.x + it.w > -60;
 }
 
 /* ---------- a luz é o cursor ---------- */
@@ -142,18 +199,18 @@ function moveLight(g: Glass, dt: number) {
   g.light[2] = light.z;
 }
 
-/* ---------- lupa de vidro sobre os prints ---------- */
+/* ---------- lupa de vidro sobre os prints, brilho nos cartões ---------- */
 const lens = { x: 0, y: 0, a: 0, it: null as Item | null };
+const under = (it: Item) => it.on && ptr.x >= it.x && ptr.x <= it.x + it.w && ptr.y >= it.y && ptr.y <= it.y + it.h;
 function lensUpdate(g: Glass, dt: number) {
-  const y = scrollY;
+  const live = fine && ptr.on;
   let hit: Item | null = null;
-  if (fine && ptr.on && g.imgsReady)
-    for (const it of imgItems) {
-      const top = it.top - y;
-      if (it.appear > 0.6 && ptr.x >= it.left && ptr.x <= it.left + it.w && ptr.y >= top && ptr.y <= top + it.h) hit = it;
-    }
+  if (live && g.imgsReady) for (const it of items) if (it.img && it.appear > 0.6 && under(it)) hit = it;
   const kh = 1 - Math.exp(-dt * 7);
-  for (const it of imgItems) it.hover += ((it === hit ? 1 : 0) - it.hover) * kh;
+  for (const it of items) {
+    if (it.img) it.hover += ((it === hit ? 1 : 0) - it.hover) * kh;
+    else if (it.card) it.hover += ((live && it.appear > 0.5 && under(it) ? 1 : 0) - it.hover) * kh;
+  }
   if (hit && lens.it !== hit) {
     lens.it = hit;
     lens.x = ptr.x;
@@ -167,22 +224,18 @@ function lensUpdate(g: Glass, dt: number) {
 }
 
 function pushRects(g: Glass) {
-  const y = scrollY;
-  const H = innerHeight;
   let n = 0;
   g.lensI = -1;
   for (const it of items) {
-    if (n >= 16 || it.appear < 0.002 || (it.img && !g.imgsReady)) continue;
-    const top = it.fixed ? it.top : it.top - y;
-    if (top > H + 60 || top + it.h < -60) continue;
+    if (n >= 16 || !it.on || it.appear < 0.002 || (it.img && !g.imgsReady)) continue;
     const o = n * 4;
-    g.rects[o] = it.left;
-    g.rects[o + 1] = top;
+    g.rects[o] = it.x;
+    g.rects[o + 1] = it.y;
     g.rects[o + 2] = it.w;
     g.rects[o + 3] = it.h;
-    g.rectP[o] = it.r;
+    g.rectP[o] = it.rad;
     g.rectP[o + 1] = it.appear;
-    g.rectP[o + 2] = it.hover;
+    g.rectP[o + 2] = it.type === 0 ? it.amp : it.hover;
     g.rectP[o + 3] = it.type;
     if (it === lens.it && lens.a > 0.01) {
       g.lensI = n;
@@ -196,16 +249,388 @@ function pushRects(g: Glass) {
   g.rectN = n;
 }
 
-/** Uma folha cobre a tela inteira: a cena só aparece fosca, então pode ser desenhada menos vezes. */
-const covered = () => {
-  const y = scrollY;
-  const H = innerHeight;
-  return items.some((it) => it.type === 0 && it.top - y <= 0 && it.top + it.h - y >= H);
+/* ---------- escrita no DOM: só transform, opacidade, visibilidade e recorte, e só quando muda ---------- */
+const memo = new Map<HTMLElement, Record<string, string>>();
+function put(el: HTMLElement, prop: 'transform' | 'opacity' | 'visibility' | 'clipPath', v: string) {
+  let c = memo.get(el);
+  if (!c) memo.set(el, (c = {}));
+  if (c[prop] === v) return;
+  c[prop] = v;
+  el.style[prop] = v;
+}
+const tr = (el: HTMLElement, x = 0, y = 0, s = 1) =>
+  put(el, 'transform', Math.abs(x) < 0.05 && Math.abs(y) < 0.05 && Math.abs(s - 1) < 1e-4 ? '' : `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0) scale(${s.toFixed(4)})`);
+const op = (el: HTMLElement, o: number) => {
+  put(el, 'opacity', o > 0.999 ? '' : o.toFixed(3));
+  put(el, 'visibility', o < 0.004 ? 'hidden' : '');
 };
+const show = (el: HTMLElement, on: boolean) => put(el, 'visibility', on ? 'visible' : 'hidden');
+
+/*
+ * ---------- o roteiro ----------
+ * A página fica presa na tela; a rolagem só move o ponteiro t (1 unidade ≈ 0,72 tela de rolagem).
+ * Cada cena é uma função pura de t: rolar para cima desfaz tudo, e pular pelo menu cai no quadro certo.
+ *   início     a câmera mergulha no buraco do "D" de vidro
+ *   sobre      uma fita de vidro líquido se abre na folha
+ *   projetos   a câmera anda de lado: um projeto por vez, os prints escorrem para dentro
+ *   serviços   uma onda de vidro sobe a tela inteira; os cartões são distribuídos como cartas
+ *   perguntas  os cartões implodem no centro e uma bolha de vidro se estica na folha
+ *   contato    a folha volta a ser bolha, vira gota e a gota derrete na palavra
+ */
+const keys = (over: number, more: number) => {
+  // D mergulho · A folha se abre · S deslize · P trilho (passo, movimento) · L lista · W onda · C cartas · I implosão · F gota
+  const k = { D0: 0.15, D1: 1.35, A0: 1.15, A1: 1.85, S0: 2.75, S1: 3.6, P0: 3.95, PS: 1.1, PM: 0.6, W0: 8.35, W1: 9.65, C0: 10.1, CS: 0.1, CD: 0.6 };
+  // quando "outros trabalhos" não cabe na tela, a lista desce por dentro da folha antes da onda (1:1 com a rolagem)
+  const L0 = k.P0 + 3 * k.PS + k.PM + 0.25;
+  const sh = more > 0 ? more + 0.1 : 0;
+  k.W0 += sh;
+  k.W1 += sh;
+  k.C0 += sh;
+  const SW = (k.W0 + k.W1) / 2;
+  const O0 = k.C0 + 7 * k.CS + k.CD;
+  const I0 = O0 + 0.55 + over;
+  const F0 = I0 + 2.3;
+  return { ...k, L0, LM: more, SW, O0, I0, F0, END: F0 + 2.75 };
+};
+let K = keys(0, 0);
+let U = 700;
+let baseH = innerHeight;
+let sceneOn = false;
+let dirty = true;
+let tCur = -1;
+let tPrev = 0;
+let run: HTMLElement | null = null;
+let homes: DOMRect[] = [];
+let svcOver = 0;
+let moreOver = 0;
+let ctaTop = 0;
+let headB = 0;
+
+const S = glass
+  ? {
+      hero: $('.sc--hero'),
+      about: $('.sc--about'),
+      work: $('.sc--work'),
+      svc: $('.sc--svc'),
+      faq: $('.sc--faq'),
+      cta: $('.sc--cta'),
+      who: $('.hero__who'),
+      foot: $('.hero__foot'),
+      hint: $('.hero__hint'),
+      aboutSheet: $('.sheet--about'),
+      aboutParts: $$('.sheet--about > .kicker, .sheet--about > .h2, .sheet--about .step'),
+      track: $('.track'),
+      metas: $$('.track .case__meta'),
+      moreCard: $<HTMLElement>('.proj__card--more'),
+      more: $$('.proj__card--more > *'),
+      capWork: $('.sc--work .stage__sub'),
+      capSvc: $('.sc--svc .stage__sub'),
+      grid: $('.svc'),
+      cards: $$('.svc__item'),
+      faqParts: $$('.sheet--faq > .h3, .faq__item'),
+      ctaParts: $$('.sheet--cta > *'),
+    }
+  : null;
+const G = glass
+  ? {
+      about: item('.sheet--about'),
+      faq: item('.sheet--faq'),
+      cta: item('.sheet--cta'),
+      capWork: item('.sc--work .stage__sub'),
+      capSvc: item('.sc--svc .stage__sub'),
+      projCards: $$('.track .proj__card').map((el) => byEl.get(el)!),
+      projImgs: $$('.track [data-glass="img"]').map((el) => byEl.get(el)!),
+      cards: $$('.svc__item').map((el) => byEl.get(el)!),
+    }
+  : null;
+
+/** Mede o que não muda com a rolagem: raios das bordas e a posição de casa de cada cartão. */
+function measure() {
+  if (!S) return;
+  for (const it of items) if (it.el) it.r = parseFloat(getComputedStyle(it.el).borderTopLeftRadius) || 0;
+  const els = [S.grid, ...S.cards];
+  const keep = els.map((el) => el.style.transform);
+  els.forEach((el) => (el.style.transform = 'none'));
+  homes = S.cards.map((el) => el.getBoundingClientRect());
+  const bottom = Math.max(...homes.map((b) => b.bottom));
+  svcOver = Math.max(0, bottom - (innerHeight - 14));
+  els.forEach((el, i) => (el.style.transform = keep[i]));
+  // quanto a lista de outros trabalhos passa da altura da folha
+  const mc = S.moreCard;
+  const keepM = S.more.map((el) => el.style.transform);
+  S.more.forEach((el) => (el.style.transform = 'none'));
+  const last = S.more[S.more.length - 1];
+  moreOver = Math.max(0, Math.ceil(last.offsetTop + last.offsetHeight + parseFloat(getComputedStyle(mc).paddingBottom) - mc.clientHeight));
+  S.more.forEach((el, i) => (el.style.transform = keepM[i]));
+  mc.classList.toggle('is-over', moreOver > 2);
+  // o vão entre o topo e a folha de contato, onde a palavra Contato pousa
+  headB = head.el?.getBoundingClientRect().bottom ?? 70;
+  ctaTop = G!.cta.el?.getBoundingClientRect().top ?? 0;
+}
+
+/** Onde a palavra Contato pousa: centrada no vão entre o topo e a folha, do tamanho que couber nele. */
+function ctaFrame(g: Glass, H: number, mob: boolean): [number, number] {
+  const base = mob ? 0.86 : 0.55;
+  const ink = g.ink[3];
+  const gap = ctaTop - headB;
+  if (!ink || gap < 30) return [base, -H * (mob ? 0.29 : 0.27)];
+  const z = clamp((gap * 0.78) / (ink[1] - ink[0]), 0.18, base);
+  const yc = (ink[0] + ink[1]) / 2;
+  return [z, (headB + ctaTop) / 2 - H / 2 - (yc - H / 2) * z];
+}
+
+/** Altura da pista de rolagem; mantém o ponto do roteiro quando a tela muda de tamanho. */
+function layout() {
+  if (!glass || !lenis) return;
+  const t = tCur;
+  U = Math.round(clamp(baseH, 520, 1300) * 0.72);
+  K = keys(svcOver > 4 ? 0.5 : 0, moreOver > 2 ? moreOver / U : 0);
+  if (!run) {
+    run = document.createElement('div');
+    run.className = 'sc-run';
+    run.setAttribute('aria-hidden', 'true');
+    $('main').after(run);
+  }
+  run.style.height = `${Math.ceil(K.END * U + innerHeight * 1.15)}px`;
+  lenis.resize();
+  if (t > 0) lenis.scrollTo(t * U, { immediate: true, force: true });
+  dirty = true;
+}
+
+function scene(g: Glass, t: number) {
+  const s = g.state;
+  const W = g.w;
+  const H = g.h;
+  const k = K;
+  const D = S!;
+  const P = G!;
+  const jump = Math.abs(t - tPrev) > 1.2;
+  const crossed = (at: number) => !jump && tPrev < at && t >= at;
+  const Dc = Math.min(W, H) * 0.34;
+
+  /* 1. início: o texto sai e a câmera mergulha no buraco do D */
+  const eh = IO2(seg(t, 0.04, 0.42));
+  show(D.hero, t < 0.5);
+  tr(D.who, 0, -70 * eh);
+  op(D.who, 1 - eh);
+  tr(D.foot, 0, 90 * eh);
+  op(D.foot, 1 - eh);
+  op(D.hint, 1 - seg(t, 0, 0.18));
+
+  /* 2. como eu trabalho: uma fita de vidro aparece no centro e se abre na folha */
+  const sl = IO3(seg(t, k.S0, k.S1));
+  const aboutOn = t >= k.A0 && t < k.S1 + 0.02;
+  show(D.about, aboutOn);
+  const ab = P.about;
+  ab.appear = aboutOn ? 1 : 0;
+  ab.sx = O3(seg(t, k.A0, k.A0 + 0.34));
+  ab.sy = IO3(seg(t, k.A0 + 0.24, k.A1));
+  ab.amp = -0.85 * (1 - seg(t, k.A0 + 0.3, k.A1 - 0.05));
+  if (crossed(k.A0 + 0.05)) g.ripple(W / 2, H / 2, 0.5);
+  D.aboutParts.forEach((el, i) => {
+    const e = O3(seg(t, k.A1 - 0.12 + i * 0.06, k.A1 + 0.3 + i * 0.06));
+    tr(el, 0, 46 * (1 - e));
+    op(el, e);
+  });
+  tr(D.aboutSheet, -W * 1.04 * sl);
+
+  /* 3. projetos: a câmera anda de lado; cada projeto para no centro e o print escorre para dentro */
+  let kt = 0;
+  for (let i = 0; i < 4; i++) kt += IO3(seg(t, k.P0 + i * k.PS, k.P0 + i * k.PS + k.PM));
+  const camX = W * (sl + kt);
+  const trackX = W - camX;
+  const workOn = t >= k.S0 && t < k.SW;
+  show(D.work, workOn);
+  tr(D.track, trackX);
+  P.capWork.appear = workOn ? O2(seg(t, k.S1 - 0.42, k.S1 + 0.02)) : 0;
+  op(D.capWork, seg(t, k.S1 - 0.25, k.S1 + 0.05));
+  for (const it of P.projCards) it.appear = workOn ? 1 : 0;
+  P.projImgs.forEach((it, i) => (it.appear = workOn ? IO2(seg(kt, i + 0.45, i + 0.95)) : 0));
+  D.metas.forEach((el, i) => {
+    const e = O3(seg(kt, i + 0.4, i + 0.95));
+    tr(el, 110 * (1 - e));
+    op(el, e);
+  });
+  const lo = k.LM > 0 ? moreOver * SINE(seg(t, k.L0, k.L0 + k.LM)) : 0;
+  D.more.forEach((el, i) => {
+    const e = O3(seg(kt, 3.4 + i * 0.05, 3.95 + i * 0.05));
+    tr(el, 80 * (1 - e), -lo);
+    op(el, e);
+  });
+
+  /* 4. a onda: uma lâmina de vidro sobe a tela inteira e, por baixo dela, a cena troca */
+  const ew = SINE(seg(t, k.W0, k.W1));
+  const wy = H + 120 - (2.5 * H + 240) * ew;
+  wipe.appear = t > k.W0 && t < k.W1 ? 1 : 0;
+  wipe.amp = 1;
+  wipe.x = -80;
+  wipe.w = W + 160;
+  wipe.y = wy;
+  wipe.h = 1.5 * H;
+  put(D.work, 'clipPath', workOn && t > k.W0 ? `inset(0 0 ${Math.max(0, H - wy + 30).toFixed(1)}px 0)` : '');
+  const svcOn = t >= k.SW && t < k.I0 + 0.65;
+  show(D.svc, svcOn);
+  put(D.svc, 'clipPath', svcOn && t < k.W1 ? `inset(${clamp(wy + 1.5 * H + 30, 0, H).toFixed(1)}px 0 0 0)` : '');
+
+  /* 5. serviços: a palavra sobe com a onda, os cartões saem de um monte embaixo e voam para o lugar */
+  // a pílula enche logo depois que a onda passa por ela e escorre quando os cartões chegam
+  P.capSvc.appear = svcOn ? O2(seg(t, k.SW + 0.12, k.SW + 0.5)) * (1 - seg(t, k.C0, k.C0 + 0.3)) : 0;
+  op(D.capSvc, seg(t, k.SW + 0.25, k.SW + 0.5) * (1 - seg(t, k.C0, k.C0 + 0.2)));
+  const ov = IO2(seg(t, k.O0, k.O0 + 0.45)) * svcOver;
+  tr(D.grid, 0, -ov);
+  P.cards.forEach((it, j) => {
+    const hm = homes[j];
+    if (!hm) return;
+    const t0 = k.C0 + j * k.CS;
+    const ed = O3(seg(t, t0, t0 + k.CD));
+    const ti = k.I0 + j * 0.025;
+    const ei = I3(seg(t, ti, ti + 0.45));
+    const hx = hm.left + hm.width / 2;
+    const hy = hm.top + hm.height / 2 - ov;
+    const x = (W / 2 - hx) * (1 - ed) + (W / 2 - hx) * ei;
+    const y = (H + hm.height * 0.7 - hy) * (1 - ed) + (H / 2 - hy) * ei;
+    tr(D.cards[j], x, y, mix(0.72, 1, ed) * (1 - 0.8 * ei));
+    op(D.cards[j], 1 - seg(ei, 0.35, 0.85));
+    it.appear = svcOn && t >= t0 ? 1 - seg(ei, 0.55, 1) : 0;
+    if (crossed(t0 + k.CD * 0.45)) g.ripple(hx, hy, 0.14);
+  });
+
+  /* 6. perguntas: no centro nasce uma bolha de vidro que se estica até virar a folha */
+  const fq = P.faq;
+  const faqOn = t >= k.I0 + 0.3 && t < k.F0 + 0.85;
+  show(D.faq, faqOn);
+  const grow = BACK(seg(t, k.I0 + 0.35, k.I0 + 0.72));
+  const open = IO3(seg(t, k.I0 + 0.72, k.I0 + 1.22));
+  const close = IO3(seg(t, k.F0 + 0.15, k.F0 + 0.55));
+  const shrink = I2(seg(t, k.F0 + 0.55, k.F0 + 0.8));
+  fq.appear = faqOn && t >= k.I0 + 0.35 ? 1 : 0;
+  fq.cr = (Dc / 2) * grow * (1 - shrink);
+  fq.morph = clamp(1 - open + close);
+  fq.amp = 0.8 * (Math.sin(Math.PI * open) + Math.sin(Math.PI * close));
+  if (crossed(k.I0 + 0.4)) g.ripple(W / 2, H / 2, 0.6);
+  D.faqParts.forEach((el, i) => {
+    const e = O3(seg(t, k.I0 + 1.05 + i * 0.05, k.I0 + 1.42 + i * 0.05)) * (1 - seg(t, k.F0, k.F0 + 0.22));
+    tr(el, 0, 30 * (1 - e));
+    op(el, e);
+  });
+
+  /* 7. contato: a bolha encolhe, cai na parede como gota, a gota derrete na palavra e a folha enche */
+  const dropIn = BACK(seg(t, k.F0 + 0.6, k.F0 + 0.95));
+  const melt = IO3(seg(t, k.F0 + 1.0, k.F0 + 1.7));
+  const lift = IO3(seg(t, k.F0 + 1.75, k.F0 + 2.4));
+  if (crossed(k.F0 + 0.64)) g.ripple(W / 2, H / 2, 0.9);
+  const ctaOn = t >= k.F0 + 1.8;
+  show(D.cta, ctaOn);
+  P.cta.appear = ctaOn ? IO2(seg(t, k.F0 + 1.85, k.F0 + 2.45)) : 0;
+  D.ctaParts.forEach((el, i) => {
+    const e = O3(seg(t, k.F0 + 2.15 + i * 0.07, k.F0 + 2.55 + i * 0.07));
+    tr(el, 0, 40 * (1 - e));
+    op(el, e);
+  });
+
+  /* a palavra de vidro, a câmera e a parede */
+  const fp = g.focusPoint();
+  const mob = W < 700;
+  let a = 0;
+  let on = 1;
+  let ox = 0;
+  let oy = 0;
+  let zoom = 1;
+  let cen = 0;
+  let wall = 1;
+  let drop = 0;
+  if (t < k.D1) {
+    // o zoom cresce em ritmo constante para o olho (exponencial) e acelera no fim: atravessa o buraco
+    const e = seg(t, k.D0, k.D1);
+    zoom = Math.pow(36, I2(e));
+    const c = IO2(seg(t, k.D0, k.D0 + 0.8));
+    ox = (W / 2 - fp[0]) * c;
+    oy = (H / 2 - fp[1]) * c;
+    wall = 1 + 0.3 * IO2(e);
+  } else if (t < k.S0) {
+    on = 0;
+    ox = W / 2 - fp[0];
+    oy = H / 2 - fp[1];
+    wall = 1.3 - 0.3 * IO2(seg(t, k.A0, k.A1 + 0.3));
+  } else if (t < k.SW) {
+    a = 1;
+    ox = trackX;
+    on = trackX > -W * 1.02 ? 1 : 0;
+  } else if (t < k.I0 + 0.55) {
+    a = 2;
+    oy = H * 0.6 * (1 - O3(seg(t, k.SW, k.W1 + 0.2)));
+    on = 1 - IO2(seg(t, k.I0, k.I0 + 0.5));
+  } else if (t < k.F0 + 0.55) {
+    a = 2;
+    on = 0;
+  } else {
+    a = 3;
+    drop = 1 - melt;
+    cen = 1;
+    const [zT, yT] = ctaFrame(g, H, mob);
+    zoom = mix(1, zT, lift);
+    oy = yT * lift;
+  }
+  s.a = s.b = a;
+  s.morph = 0;
+  s.wordOn = on;
+  s.offX = ox;
+  s.offY = oy;
+  s.zoom = zoom;
+  s.cen = cen;
+  s.wall = wall;
+  s.dropMix = drop;
+  s.dropR = clamp(Math.min(W, H) * 0.075, 26, 72);
+  g.drops.fill(0);
+  if (drop > 0.001) {
+    g.drops[0] = W / 2;
+    g.drops[1] = H / 2;
+    g.drops[2] = (Dc / 2) * 1.05 * dropIn;
+  }
+  s.panX = camX * 0.12;
+  s.scroll = H * 2.2 * ew;
+  tPrev = t;
+}
+
+/* ---------- menu: marca a cena atual; cada link leva ao ponto do roteiro ---------- */
+const navLinks = $$('.nav a');
+let navCur = '';
+function navMark(t: number) {
+  const id = t >= K.S0 && t < K.SW ? 'projetos' : t >= K.SW && t < K.I0 + 0.5 ? 'servicos' : t >= K.F0 + 1 ? 'contato' : '';
+  if (id === navCur) return;
+  navCur = id;
+  navLinks.forEach((a) => a.classList.toggle('is-on', a.dataset.go === id));
+}
+const LABEL: Record<string, () => number> = { inicio: () => 0, projetos: () => K.S1 + 0.12, servicos: () => K.O0 + 0.05, contato: () => K.END };
+function goTo(id: string, immediate = false) {
+  if (glass && lenis) {
+    const at = LABEL[id];
+    if (at) lenis.scrollTo(at() * U, { immediate, force: true });
+    return;
+  }
+  if (id === 'inicio') return lenis ? lenis.scrollTo(0, { immediate, force: true }) : scrollTo({ top: 0 });
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (lenis) lenis.scrollTo(el, { immediate, force: true });
+  else el.scrollIntoView();
+}
+
+/** Uma folha cobre a tela inteira: a cena só aparece fosca, então pode ser desenhada menos vezes. */
+const covered = (g: Glass) => items.some((it) => it.type === 0 && it.on && it.appear > 0.99 && it.x <= 0 && it.y <= 0 && it.x + it.w >= g.w && it.y + it.h >= g.h);
 
 let adaptOn = false;
 if (glass) {
   const g = glass;
+  g.onLost = () => {
+    // sem o vidro: volta para a página comum, com tudo visível
+    sceneOn = false;
+    root.classList.remove('gl', 'gl-img', 'roteiro');
+    memo.forEach((_, el) => el.removeAttribute('style'));
+    memo.clear();
+    run?.remove();
+    lenis?.resize();
+    scrollTo(0, 0);
+  };
   let rx = -1;
   let ry = -1;
   let rt = 0;
@@ -256,20 +681,29 @@ if (glass) {
   let lastR = 0;
   let vel = 0;
   let prev = false;
-  gsap.ticker.add(() => {
+  gsap.ticker.add((time) => {
+    lenis?.raf(time * 1000);
     const now = performance.now();
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     vel += (clamp((lenis ? lenis.velocity : 0) / 60, -1, 1) - vel) * (1 - Math.exp(-dt * 5));
     g.state.vel = vel * 1.5;
-    g.state.scroll = scrollY;
-    syncWord(g);
+    if (sceneOn) {
+      const t = clamp((lenis ? lenis.animatedScroll : scrollY) / U, 0, K.END);
+      if (t !== tCur || dirty) {
+        scene(g, t);
+        navMark(t);
+        tCur = t;
+        dirty = false;
+      }
+    }
     moveLight(g, dt);
+    for (const it of items) if (it.appear >= 0.002) place(it, g.w, g.h);
     lensUpdate(g, dt);
     pushRects(g);
     // mexendo: todo quadro. Parado: 30 quadros por segundo, ou 11 se uma folha cobre tudo
     const active = now - lastInput < 2500 || now < busyUntil || Math.abs(vel) > 0.01;
-    const gap = active ? 0 : covered() ? 90 : 33;
+    const gap = active ? 0 : covered(g) ? 90 : 33;
     if (now - lastR >= gap - 4) {
       g.render();
       if (active && prev && adaptOn) g.adapt(now - lastR);
@@ -280,23 +714,48 @@ if (glass) {
 
   let rsz = 0;
   let lw = innerWidth;
-  let lh = innerHeight;
   addEventListener('resize', () => {
     clearTimeout(rsz);
     rsz = window.setTimeout(() => {
-      measure();
       g.resize();
-      // a barra do navegador do celular aparecendo não refaz as palavras; mudar a largura refaz
-      if (Math.abs(innerWidth - lw) > 2 || Math.abs(innerHeight - lh) > lh * 0.25) {
+      // a barra do navegador do celular aparecendo não refaz as palavras nem muda o ritmo da rolagem
+      if (Math.abs(innerWidth - lw) > 2 || Math.abs(innerHeight - baseH) > baseH * 0.25) {
         lw = innerWidth;
-        lh = innerHeight;
-        g.buildWords().catch(() => null);
+        baseH = innerHeight;
+        g.buildWords()
+          .then(() => (dirty = true))
+          .catch(() => null);
+      }
+      if (sceneOn) {
+        measure();
+        layout();
       }
       busy(400);
     }, 180);
   });
-  // qualquer mudança de altura do conteúdo (perguntas abrindo, fontes) atualiza as posições
-  new ResizeObserver(() => requestAnimationFrame(measure)).observe($('main'));
+}
+
+/* ---------- teclado: o foco num projeto fora da tela leva o roteiro até ele ---------- */
+if (glass) {
+  // a lista é movida pelo roteiro; se o navegador tentar rolar a folha (foco), ela volta ao zero
+  S!.moreCard.addEventListener('scroll', () => S!.moreCard.scrollTop && (S!.moreCard.scrollTop = 0));
+  document.addEventListener('focusin', (e) => {
+    if (!sceneOn || !lenis) return;
+    const proj = (e.target as Element).closest('.track > .proj');
+    if (!proj) return;
+    const i = Array.from(proj.parentElement!.children).indexOf(proj);
+    let at = i === 0 ? K.S1 + 0.12 : K.P0 + (i - 1) * K.PS + K.PM + 0.1;
+    const mc = S!.moreCard;
+    if (K.LM > 0 && mc.contains(e.target as Node)) {
+      // na lista que rola por dentro da folha, para no ponto em que a linha focada aparece
+      mc.scrollTop = 0;
+      const row = (e.target as HTMLElement).closest<HTMLElement>('.arc') ?? (e.target as HTMLElement);
+      const need = row.offsetTop + row.offsetHeight + 40 - mc.clientHeight;
+      const f = clamp(need / moreOver, 0, 1);
+      at = f > 0 ? K.L0 + (K.LM * Math.acos(1 - 2 * f)) / Math.PI : at;
+    }
+    if (Math.abs(at - tCur) > 0.02) lenis.scrollTo(at * U, { immediate: true, force: true });
+  });
 }
 
 /* ---------- navegação: a cortina cobre, troca de lugar e revela ---------- */
@@ -305,11 +764,11 @@ document.addEventListener('click', (e) => {
   if (!a) return;
   e.preventDefault();
   const id = a.dataset.go!;
-  if (lite) return scrollToId(id);
+  if (lite) return goTo(id);
   busy(2600);
   curtain(() => {
-    scrollToId(id, true);
-    ScrollTrigger.update();
+    goTo(id, true);
+    if (!glass) ScrollTrigger.update();
   });
 });
 
@@ -409,19 +868,7 @@ document.addEventListener('click', (e) => {
 });
 addEventListener('keydown', (e) => e.key === 'Escape' && closePanel());
 
-/* ---------- menu marca a seção atual ---------- */
-const navLinks = $$('.nav a');
-['projetos', 'servicos', 'contato'].forEach((id) =>
-  ScrollTrigger.create({
-    trigger: `#${id}`,
-    start: 'top 50%',
-    endTrigger: `#${id} + .sheet`,
-    end: 'bottom 50%',
-    onToggle: (st) => navLinks.forEach((a) => a.dataset.go === id && a.classList.toggle('is-on', st.isActive)),
-  }),
-);
-
-/* ---------- sem WebGL: os prints inclinam com o mouse ---------- */
+/* ---------- sem WebGL: página comum, com entradas ao rolar e prints que inclinam com o mouse ---------- */
 function tilt() {
   if (!fine) return;
   $$('.case__media').forEach((m) => {
@@ -443,50 +890,44 @@ function tilt() {
     });
   });
 }
-
-/* ---------- entradas ao rolar (DOM: só transform e opacidade; vidro: enche de baixo para cima) ---------- */
-function reveals() {
-  const sel = ['.sheet .kicker', '.sheet .h2', '.step', '.case__meta', '.more', '.svc__item', '.faq', '.cta__title', '.sheet--cta .lead', '.cta__row'];
-  if (!glass) sel.push('.case__media', '.stage__sub');
+function flow() {
+  const sel = ['.sheet .kicker', '.sheet .h2', '.step', '.case__media', '.case__meta', '.proj__card--more', '.stage__sub', '.svc__item', '.faq__item', '.cta__title', '.sheet--cta .lead', '.cta__row'];
   $$(sel.join(', ')).forEach((el) =>
     gsap.from(el, { y: 50, autoAlpha: 0, duration: 1.2, scrollTrigger: { trigger: el, start: 'top 92%', once: true } }),
   );
-  if (!glass) return;
-  for (const it of items) {
-    if (it.type === 0 || it.fixed) continue;
-    if (!it.img) gsap.set(it.el, { autoAlpha: 0 });
+  ['projetos', 'servicos', 'contato'].forEach((id) =>
     ScrollTrigger.create({
-      trigger: it.el,
-      start: 'top 90%',
-      once: true,
-      onEnter: () => {
-        busy(1800);
-        gsap.to(it, { appear: 1, duration: it.img ? 1.5 : 1.1, ease: 'power2.inOut' });
-        if (!it.img) gsap.to(it.el, { autoAlpha: 1, duration: 0.8, delay: 0.4 });
-      },
-    });
-  }
+      trigger: `#${id}`,
+      start: 'top 50%',
+      end: 'bottom 50%',
+      onToggle: (st) => navLinks.forEach((a) => a.dataset.go === id && a.classList.toggle('is-on', st.isActive)),
+    }),
+  );
+  tilt();
+  ScrollTrigger.refresh();
 }
 
 /* ---------- início ---------- */
-const HERO_UI = '.head > *, .hero__who, .hero__foot, .hero__hint';
+const HERO_UI = '.head > *, .hero__who > *, .hero__foot > *, .hero__hint > span';
 function start() {
   root.classList.remove('is-loading');
   lenis?.start();
-  measure();
   if (lite) return;
   gsap.fromTo(HERO_UI, { autoAlpha: 0, y: 20 }, { autoAlpha: 1, y: 0, duration: 1.2, stagger: 0.07 });
-  if (glass) {
-    const g = glass;
-    const hd = items.find((i) => i.fixed);
-    if (hd) gsap.to(hd, { appear: 1, duration: 1.3, ease: 'power3.out' });
-    g.loadImages(projects.map((p) => (p.preview.kind === 'image' ? p.preview.src : ''))).then(() => root.classList.add('gl-img'));
-    gsap.delayedCall(1.5, () => (adaptOn = true));
-  } else tilt();
-  reveals();
-  ScrollTrigger.refresh();
+  if (!glass) return flow();
+  const g = glass;
   measure();
-  ScrollTrigger.addEventListener('refresh', measure);
+  layout();
+  gsap.to(head, { appear: 1, duration: 1.3, ease: 'power3.out' });
+  g.loadImages(projects.map((p) => (p.preview.kind === 'image' ? p.preview.src : ''))).then(() => root.classList.add('gl-img'));
+  gsap.delayedCall(1.5, () => (adaptOn = true));
+}
+/** Fim do carregamento: a rolagem passa a conduzir a cena (e um link com #seção já cai no lugar). */
+function roll() {
+  sceneOn = true;
+  dirty = true;
+  const id = location.hash.slice(1);
+  if (LABEL[id] && id !== 'inicio') goTo(id, true);
 }
 
 /* ---------- carregamento: gotas de vidro que crescem com o progresso, se juntam e viram o nome ---------- */
@@ -494,11 +935,12 @@ function boot(g: Glass) {
   history.scrollRestoration = 'manual';
   scrollTo(0, 0);
   gsap.set(HERO_UI, { autoAlpha: 0 });
-  measure();
   const n = $('.loader__n');
   const D = [0.62, 0.44, 0.54, 0.38, 0.5].map((r, i) => ({ r, a: i * 1.2566 + 0.4, w: (i % 2 ? -1 : 1) * (0.34 + i * 0.05), ph: i * 1.9 }));
   const ld = { p: 0, conv: 0, grow: 0 };
   const m0 = Math.min(innerWidth, innerHeight);
+  g.state.a = g.state.b = 0;
+  g.state.wordOn = 1;
   g.state.dropMix = 1;
   g.state.dropR = clamp(m0 * 0.075, 26, 72);
   const drops = () => {
@@ -518,7 +960,7 @@ function boot(g: Glass) {
   drops();
   gsap.ticker.add(drops);
   busy(60000);
-  const show = () => {
+  const count = () => {
     n.textContent = String(Math.round(ld.p * 100));
   };
   gsap.to(ld, { grow: 1, duration: 1.2, ease: 'elastic.out(1, 0.6)' });
@@ -530,11 +972,11 @@ function boot(g: Glass) {
     g.buildPoster(POSTER);
     return g.buildWords().catch((err) => console.warn('[vidro]', err));
   });
-  gsap.to(ld, { p: 0.8, duration: 1.6, ease: 'power2.inOut', onUpdate: show });
+  gsap.to(ld, { p: 0.8, duration: 1.6, ease: 'power2.inOut', onUpdate: count });
   Promise.all([ready, wait(1.7)]).then(() => {
     gsap
       .timeline()
-      .to(ld, { p: 1, duration: 0.4, ease: 'power2.out', onUpdate: show })
+      .to(ld, { p: 1, duration: 0.4, ease: 'power2.out', onUpdate: count })
       .to(ld, { conv: 1, duration: 1.05, ease: 'power3.inOut' })
       .to('.loader', { autoAlpha: 0, duration: 0.4 }, '<0.3')
       .call(() => g.ripple(innerWidth / 2, innerHeight / 2, 1))
@@ -550,9 +992,18 @@ function boot(g: Glass) {
       .call(() => {
         gsap.ticker.remove(drops);
         g.drops.fill(0);
+        roll();
       });
   });
 }
 
 if (glass) boot(glass);
 else start();
+
+// testes automáticos (só com o vidro forçado): expõe o estado do roteiro
+try {
+  if (glass && localStorage.getItem('sd-gl') === 'force')
+    Object.assign(window, { __sd: { glass, lenis, items, get K() { return K; }, get U() { return U; }, get t() { return tCur; } } });
+} catch {
+  /* sem armazenamento */
+}
