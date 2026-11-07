@@ -1,5 +1,7 @@
-/* SilvaDev · vidro líquido.
-   O fundo é um único canvas WebGL fixo; o conteúdo vem em "folhas" que deslizam por cima.
+/* SilvaDev · vidro de verdade.
+   Um canvas WebGL fixo desenha a parede iluminada, as palavras de vidro e as lâminas de vidro
+   (folhas, topo, pílulas e prints) exatamente onde estão os elementos do HTML. O HTML fica por cima
+   só com o texto. Sem WebGL, as mesmas peças viram cartões sólidos.
    Desempenho: só transform/opacity animam; nada de backdrop-filter nem filter: blur. */
 :root {
   --bg: #f4f5fa;
@@ -18,6 +20,8 @@
   --sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'Geist Mono', ui-monospace, Consolas, monospace;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --glass-in: rgba(255, 255, 255, 0.46);
+  --glass-hi: rgba(255, 255, 255, 0.75);
   color-scheme: light;
 }
 :root[data-theme='dark'] {
@@ -31,6 +35,8 @@
   --purple: #9d76ff;
   --purple-ink: #b69aff;
   --cyan: #55d6ff;
+  --glass-in: rgba(255, 255, 255, 0.045);
+  --glass-hi: rgba(255, 255, 255, 0.09);
   color-scheme: dark;
 }
 *,
@@ -395,7 +401,7 @@ html:not(.gl) .stage__word {
   color: var(--muted);
   white-space: nowrap;
 }
-@media (hover: none) {
+@media (hover: none), (max-width: 700px) {
   .hero__hint {
     display: none;
   }
@@ -418,6 +424,13 @@ html:not(.gl) .stage__word {
   border-radius: var(--r);
   margin-left: clamp(0px, 1vw, 16px);
   margin-right: clamp(0px, 1vw, 16px);
+}
+.sheet--about {
+  /* alta o bastante para cobrir a tela: a palavra de vidro troca escondida atrás dela */
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 .steps {
   display: grid;
@@ -678,8 +691,7 @@ a.arc .arc__go {
 
 /* ---------- contato ---------- */
 .sheet--cta {
-  border-radius: var(--r) var(--r) 0 0;
-  margin-bottom: 0;
+  margin-bottom: clamp(0px, 1vw, 16px);
 }
 .cta__title {
   font: 700 clamp(44px, 7.4vw, 124px) / 0.95 var(--display);
@@ -841,6 +853,57 @@ a.arc .arc__go {
   height: 96px;
   margin: -48px 0 0 -48px;
   visibility: hidden;
+}
+
+/* ---------- modo vidro: o WebGL desenha as lâminas, o HTML fica só com o conteúdo ---------- */
+:root.gl {
+  --line: rgba(16, 20, 29, 0.1);
+}
+:root.gl[data-theme='dark'] {
+  --line: rgba(255, 255, 255, 0.09);
+}
+.gl .head,
+.gl .stage__sub {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.gl .sheet {
+  background: transparent;
+  box-shadow: none;
+}
+.gl .head::before {
+  /* o texto que rola por baixo do topo fica fosco, como atrás de vidro (área pequena: custo baixo) */
+  content: '';
+  position: absolute;
+  inset: 7px;
+  z-index: -1;
+  border-radius: inherit;
+  -webkit-backdrop-filter: blur(9px);
+  backdrop-filter: blur(9px);
+  pointer-events: none;
+}
+.gl.is-loading .head::before {
+  display: none;
+}
+.gl .step,
+.gl .svc__item,
+.gl .tags li,
+.gl .copy,
+.gl a.arc:hover {
+  background: var(--glass-in);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+.gl .case__shine {
+  display: none;
+}
+.gl-img .case__tilt {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.gl-img .case__tilt img {
+  opacity: 0;
 }
 
 /* ---------- celular e tablet ---------- */

@@ -10,13 +10,13 @@ const GH = `<svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="c
 
 /** Faixa vazia onde o título de vidro aparece (o texto real fica para leitores de tela). */
 const stage = (i: number, word: string, id: string, sub: string) =>
-  `<section class="stage" id="${id}" data-word="${i}" aria-labelledby="${id}-t"><h2 class="vh" id="${id}-t">${word}</h2><p class="stage__sub">${sub}</p><p class="stage__word" aria-hidden="true">${word}</p></section>`;
+  `<section class="stage" id="${id}" data-word="${i}" aria-labelledby="${id}-t"><h2 class="vh" id="${id}-t">${word}</h2><p class="stage__sub" data-glass="pill">${sub}</p><p class="stage__word" aria-hidden="true">${word}</p></section>`;
 
 function caseBlock(p: Project, i: number) {
   const img = p.preview.kind === 'image' ? p.preview : null;
   return `<article class="case" data-i="${i}">
     <button type="button" class="case__media" data-open="${i}" aria-label="Ver detalhes de ${esc(p.name)}">
-      <span class="case__tilt">${img ? `<img src="${img.src}" alt="${esc(img.alt)}" width="1600" height="1000" loading="lazy" decoding="async" />` : ''}<span class="case__shine"></span></span>
+      <span class="case__tilt" data-glass="img" data-img="${i}">${img ? `<img src="${img.src}" alt="${esc(img.alt)}" width="1600" height="1000" loading="lazy" decoding="async" />` : ''}<span class="case__shine"></span></span>
     </button>
     <div class="case__meta">
       <p class="case__n">${p.index}</p>
@@ -52,9 +52,9 @@ export function renderApp() {
   return `
 <a class="skip" href="#projetos">Pular para os projetos</a>
 <canvas class="liquid" aria-hidden="true"></canvas>
-<div class="loader" aria-hidden="true"><span class="loader__n">0</span><span class="loader__t">carregando o vidro</span></div>
+<div class="loader" aria-hidden="true"><span class="loader__n">0</span><span class="loader__t">derretendo o vidro</span></div>
 
-<header class="head">
+<header class="head" data-glass="head">
   <a class="brand" href="#inicio" data-go="inicio" aria-label="SilvaDev, voltar ao início">${LOGO}<span>Silva<em>Dev</em></span></a>
   <nav class="nav" aria-label="Seções">
     <a href="#projetos" data-go="projetos">Projetos</a>
@@ -73,10 +73,10 @@ export function renderApp() {
       <p class="hero__sub">Eu tiro empresas da planilha. ERPs, painéis e integrações sob medida, do banco de dados à tela.</p>
       <a class="btn btn--solid" href="#projetos" data-go="projetos">Ver projetos ${ARROW}</a>
     </div>
-    <p class="hero__hint" aria-hidden="true">Passe o mouse no vidro · role para derreter</p>
+    <p class="hero__hint" aria-hidden="true">O mouse é a luz · clique para fazer ondas · role para derreter</p>
   </section>
 
-  <section class="sheet sheet--about" aria-labelledby="about-t">
+  <section class="sheet sheet--about" data-glass="sheet" aria-labelledby="about-t">
     <p class="kicker">Como eu trabalho</p>
     <h2 class="h2" id="about-t">Sistemas que a equipe usa todo dia, sem manual.</h2>
     <ol class="steps">${STEPS.map((s, i) => `<li class="step"><span class="step__n">0${i + 1}</span><h3>${s[0]}</h3><p>${s[1]}</p></li>`).join('')}</ol>
@@ -84,7 +84,7 @@ export function renderApp() {
 
   ${stage(2, 'Projetos', 'projetos', 'Trabalho real, em produção')}
 
-  <section class="sheet sheet--work" aria-label="Projetos em produção">
+  <section class="sheet sheet--work" data-glass="sheet" aria-label="Projetos em produção">
     ${projects.map(caseBlock).join('')}
     <div class="more">
       <h3 class="h3">Outros trabalhos</h3>
@@ -95,7 +95,7 @@ export function renderApp() {
 
   ${stage(3, 'Serviços', 'servicos', 'Do banco de dados até a tela')}
 
-  <section class="sheet sheet--svc" aria-label="Serviços e perguntas">
+  <section class="sheet sheet--svc" data-glass="sheet" aria-label="Serviços e perguntas">
     <ul class="svc">
       ${services.map((s, i) => `<li class="svc__item"><span class="svc__n">${String(i + 1).padStart(2, '0')}</span><h3>${esc(s.name)}</h3><p>${esc(s.note)}</p><span class="svc__tags">${s.tags.map(esc).join(' · ')}</span></li>`).join('')}
     </ul>
@@ -107,7 +107,7 @@ export function renderApp() {
 
   ${stage(4, 'Contato', 'contato', 'Vamos conversar')}
 
-  <section class="sheet sheet--cta" aria-labelledby="cta-t">
+  <section class="sheet sheet--cta" data-glass="sheet" aria-labelledby="cta-t">
     <h2 class="cta__title" id="cta-t">Qual planilha a gente aposenta primeiro?</h2>
     <p class="lead">Me conta o processo que mais dá trabalho hoje. Não precisa chegar com tudo definido.</p>
     <div class="cta__row">
