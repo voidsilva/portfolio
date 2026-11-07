@@ -862,8 +862,8 @@ a.arc .arc__go {
 :root.gl[data-theme='dark'] {
   --line: rgba(255, 255, 255, 0.09);
 }
-.gl .head,
-.gl .stage__sub {
+:root.gl .head,
+:root.gl .stage__sub {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
