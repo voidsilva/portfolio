@@ -10,7 +10,7 @@ import { VERT, SCENE, UI } from './shaders';
 export const WORDS = ['SilvaDev', 'Projetos', 'Serviços', 'Contato'];
 const IMG_W = 1024;
 const IMG_H = 640;
-const FONT = '"Bricolage Grotesque", system-ui, sans-serif';
+export const FONT = '"Bricolage Grotesque", system-ui, sans-serif';
 
 type U = Record<string, WebGLUniformLocation | null>;
 const COMMON_U = ['uView', 'uRes', 'uTime', 'uDark', 'uLight', 'uLightOn', 'uVel', 'uRip'];
@@ -25,7 +25,33 @@ const forced = () => {
   }
 };
 
-export class Glass {
+/** O que o roteiro usa de um motor de vidro (WebGL ou a versão em CSS). */
+export interface GlassLike {
+  w: number;
+  h: number;
+  state: Glass['state'];
+  light: Float32Array;
+  drops: Float32Array;
+  rects: Float32Array;
+  rectP: Float32Array;
+  rectN: number;
+  lens: Float32Array;
+  lensI: number;
+  imgsReady: boolean;
+  slow?: number;
+  ink: [number, number][];
+  onLost: (() => void) | null;
+  ripple(x: number, y: number, amp?: number): void;
+  focusPoint(): [number, number];
+  render(): void;
+  adapt(dt: number): void;
+  resize(): void;
+  buildWords(): Promise<void>;
+  buildPoster(rows: string[]): void;
+  loadImages(srcs: string[]): Promise<void>;
+}
+
+export class Glass implements GlassLike {
   /** Sem GPU de verdade (renderização por software) o vidro travaria: aí fica a versão sem WebGL. */
   static supported() {
     try {
@@ -62,6 +88,8 @@ export class Glass {
   private focus = [0, 0];
   private dts: number[] = [];
   private good = 0;
+  /** janelas seguidas lentas mesmo na menor resolução */
+  slow = 0;
 
   /** viewport em px CSS e tamanho real do desenho */
   w = 1;
@@ -210,11 +238,13 @@ export class Glass {
 
   /** Mede o tempo entre quadros e baixa (ou devolve) a resolução para manter 60 fps. */
   adapt(dt: number) {
-    if (dt > 120) return;
-    this.dts.push(dt);
+    // um soluço (aba trocada, coleta de lixo) pesa no máximo 120 ms na média
+    this.dts.push(Math.min(dt, 120));
     if (this.dts.length < 45) return;
     const avg = this.dts.reduce((a, b) => a + b, 0) / this.dts.length;
     this.dts.length = 0;
+    // já na menor resolução e ainda abaixo de ~25 quadros: a placa não dá conta (o site troca para a versão em CSS)
+    if (this.qa <= 0.56) this.slow = avg > 40 ? this.slow + 1 : 0;
     if (avg > 21.5 && this.qa > 0.56) {
       this.qa = Math.max(0.55, this.qa - 0.15);
       this.good = 0;

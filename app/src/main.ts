@@ -3,7 +3,8 @@ import Lenis from 'lenis';
 import { gsap, ScrollTrigger, root, isLite } from './lib/motion';
 import { renderPanel } from './render';
 import { curtain } from './fx/curtain';
-import { Glass } from './fx/glass/engine';
+import { Glass, type GlassLike } from './fx/glass/engine';
+import { CssGlass } from './fx/glass/css';
 import { projects } from './data/content';
 
 root.classList.add('js');
@@ -28,18 +29,34 @@ const SINE = ease('sine.inOut');
 
 const POSTER = ['SISTEMAS SOB MEDIDA', 'ERP · PAINÉIS · INTEGRAÇÕES', 'DO BANCO DE DADOS À TELA', 'SILVADEV · PAULO SILVA'];
 
-/* ---------- vidro: com WebGL a página vira um roteiro (cada rolagem move a cena de um jeito) ---------- */
-let glass: Glass | null = null;
-if (!lite && Glass.supported()) {
+/* ---------- vidro: a página vira um roteiro (cada rolagem move a cena de um jeito) ---------- */
+// com placa de vídeo: WebGL. Sem ela (ou com WebGL só por software): o mesmo roteiro em HTML e CSS
+const pref = (k: string) => {
   try {
-    glass = new Glass($<HTMLCanvasElement>('.liquid'), fine ? 6 : 4, projects.length);
-    root.classList.add('gl', 'roteiro');
-    glass.state.dark = root.dataset.theme === 'dark' ? 1 : 0;
-  } catch (err) {
-    console.warn('[vidro]', err);
-    glass = null;
-    root.classList.remove('gl', 'roteiro');
+    return localStorage.getItem(k) ?? sessionStorage.getItem(k);
+  } catch {
+    return null;
   }
+};
+const glPref = pref('sd-gl');
+// placa que não deu conta nos últimos 7 dias: vai direto para a versão em CSS
+const weak = Date.now() - Number(pref('sd-weak') || 0) < 7 * 864e5;
+let glass: GlassLike | null = null;
+if (!lite) {
+  if (glPref !== 'css' && (glPref === 'force' || !weak) && Glass.supported()) {
+    try {
+      glass = new Glass($<HTMLCanvasElement>('.liquid'), fine ? 6 : 4, projects.length);
+    } catch (err) {
+      console.warn('[vidro]', err);
+      glass = null;
+    }
+  }
+  if (!glass) {
+    glass = new CssGlass($('.liquid'));
+    root.classList.add('nogl');
+  }
+  root.classList.add('gl', 'roteiro');
+  glass.state.dark = root.dataset.theme === 'dark' ? 1 : 0;
 }
 if (!glass) root.classList.remove('is-loading');
 
@@ -178,7 +195,7 @@ let busyUntil = 0;
 const poke = () => (lastInput = performance.now());
 const busy = (ms: number) => (busyUntil = Math.max(busyUntil, performance.now() + ms));
 
-function moveLight(g: Glass, dt: number) {
+function moveLight(g: GlassLike, dt: number) {
   const W = innerWidth;
   const H = innerHeight;
   const now = performance.now();
@@ -202,7 +219,7 @@ function moveLight(g: Glass, dt: number) {
 /* ---------- lupa de vidro sobre os prints, brilho nos cartões ---------- */
 const lens = { x: 0, y: 0, a: 0, it: null as Item | null };
 const under = (it: Item) => it.on && ptr.x >= it.x && ptr.x <= it.x + it.w && ptr.y >= it.y && ptr.y <= it.y + it.h;
-function lensUpdate(g: Glass, dt: number) {
+function lensUpdate(g: GlassLike, dt: number) {
   const live = fine && ptr.on;
   let hit: Item | null = null;
   if (live && g.imgsReady) for (const it of items) if (it.img && it.appear > 0.6 && under(it)) hit = it;
@@ -223,7 +240,7 @@ function lensUpdate(g: Glass, dt: number) {
   if (!hit && lens.a < 0.01) lens.it = null;
 }
 
-function pushRects(g: Glass) {
+function pushRects(g: GlassLike) {
   let n = 0;
   g.lensI = -1;
   for (const it of items) {
@@ -369,7 +386,7 @@ function measure() {
 }
 
 /** Onde a palavra Contato pousa: centrada no vão entre o topo e a folha, do tamanho que couber nele. */
-function ctaFrame(g: Glass, H: number, mob: boolean): [number, number] {
+function ctaFrame(g: GlassLike, H: number, mob: boolean): [number, number] {
   const base = mob ? 0.86 : 0.55;
   const ink = g.ink[3];
   const gap = ctaTop - headB;
@@ -397,7 +414,7 @@ function layout() {
   dirty = true;
 }
 
-function scene(g: Glass, t: number) {
+function scene(g: GlassLike, t: number) {
   const s = g.state;
   const W = g.w;
   const H = g.h;
@@ -616,21 +633,23 @@ function goTo(id: string, immediate = false) {
 }
 
 /** Uma folha cobre a tela inteira: a cena só aparece fosca, então pode ser desenhada menos vezes. */
-const covered = (g: Glass) => items.some((it) => it.type === 0 && it.on && it.appear > 0.99 && it.x <= 0 && it.y <= 0 && it.x + it.w >= g.w && it.y + it.h >= g.h);
+const covered = (g: GlassLike) => items.some((it) => it.type === 0 && it.on && it.appear > 0.99 && it.x <= 0 && it.y <= 0 && it.x + it.w >= g.w && it.y + it.h >= g.h);
 
 let adaptOn = false;
 if (glass) {
   const g = glass;
-  g.onLost = () => {
-    // sem o vidro: volta para a página comum, com tudo visível
-    sceneOn = false;
-    root.classList.remove('gl', 'gl-img', 'roteiro');
-    memo.forEach((_, el) => el.removeAttribute('style'));
-    memo.clear();
-    run?.remove();
-    lenis?.resize();
-    scrollTo(0, 0);
+  // a placa de vídeo caiu (ou não dá conta): recarrega com o roteiro em HTML e CSS, no mesmo ponto
+  const toCss = (weakGpu: boolean) => {
+    try {
+      sessionStorage.setItem('sd-gl', 'css');
+      sessionStorage.setItem('sd-t', String(Math.max(0, tCur)));
+      if (weakGpu) localStorage.setItem('sd-weak', String(Date.now()));
+    } catch {
+      /* sem armazenamento */
+    }
+    location.reload();
   };
+  g.onLost = () => toCss(false);
   let rx = -1;
   let ry = -1;
   let rt = 0;
@@ -706,7 +725,10 @@ if (glass) {
     const gap = active ? 0 : covered(g) ? 90 : 33;
     if (now - lastR >= gap - 4) {
       g.render();
-      if (active && prev && adaptOn) g.adapt(now - lastR);
+      if (active && prev && adaptOn) {
+        g.adapt(now - lastR);
+        if ((g.slow ?? 0) >= 2 && glPref !== 'force') toCss(true);
+      }
       prev = active;
       lastR = now;
     } else prev = false;
@@ -808,7 +830,8 @@ const motionBtn = $('[data-motion]');
 motionBtn.textContent = lite ? 'Entrar com animações' : 'Entrar sem animações';
 motionBtn.addEventListener('click', () => {
   try {
-    localStorage.setItem('sd-motion', lite ? 'full' : 'lite');
+    // vale só para esta visita: na próxima o site abre com as animações de novo
+    sessionStorage.setItem('sd-motion', lite ? 'full' : 'lite');
   } catch {
     /* sem armazenamento */
   }
@@ -926,12 +949,20 @@ function start() {
 function roll() {
   sceneOn = true;
   dirty = true;
+  // voltou de uma troca para a versão em CSS: continua do mesmo ponto do roteiro
+  const back = Number(pref('sd-t'));
+  try {
+    sessionStorage.removeItem('sd-t');
+  } catch {
+    /* sem armazenamento */
+  }
+  if (back > 0 && lenis) return lenis.scrollTo(back * U, { immediate: true, force: true });
   const id = location.hash.slice(1);
   if (LABEL[id] && id !== 'inicio') goTo(id, true);
 }
 
 /* ---------- carregamento: gotas de vidro que crescem com o progresso, se juntam e viram o nome ---------- */
-function boot(g: Glass) {
+function boot(g: GlassLike) {
   history.scrollRestoration = 'manual';
   scrollTo(0, 0);
   gsap.set(HERO_UI, { autoAlpha: 0 });
@@ -1002,7 +1033,7 @@ else start();
 
 // testes automáticos (só com o vidro forçado): expõe o estado do roteiro
 try {
-  if (glass && localStorage.getItem('sd-gl') === 'force')
+  if (glass && (glPref === 'force' || glPref === 'css'))
     Object.assign(window, { __sd: { glass, lenis, items, get K() { return K; }, get U() { return U; }, get t() { return tCur; } } });
 } catch {
   /* sem armazenamento */
